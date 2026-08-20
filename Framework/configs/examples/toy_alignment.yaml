@@ -1,0 +1,51 @@
+schema_version: trainomni.run.v1
+name: toy_alignment_smoke
+seed: 20260820
+
+model:
+  plugin: toy-vlm
+  config:
+    checkpoint: toy/random
+
+stage:
+  stage_id: align_001
+  stage_type: modality_alignment
+  objective: cpt
+  inputs: {}
+  data:
+    datasets:
+      - dataset_id: toy_caption
+        uri: data://toy-caption
+        importer: canonical
+        weight: 1.0
+    modalities: [text, image]
+    content_blocks: [text, media]
+    max_media_per_sample: 1
+    packing: false
+    padding_free: false
+  component_policy:
+    vision_encoder:
+      trainable: false
+    connector:
+      trainable: true
+      learning_rate: 0.001
+    language_model:
+      trainable: false
+  optimization:
+    optimizer: adamw
+    learning_rate: 0.0001
+    weight_decay: 0.0
+    max_steps: 2
+    gradient_accumulation_steps: 1
+  engine:
+    backend: torch
+    parallelism: single
+    precision: fp32
+    attention_backend: sdpa
+  checkpoint:
+    every_steps: 1
+    resume_level: exact
+    export_formats: [hf]
+  evaluations: []
+  gates: []
+  outputs: {}

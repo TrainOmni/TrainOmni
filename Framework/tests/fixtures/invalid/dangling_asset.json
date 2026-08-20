@@ -1,0 +1,19 @@
+{
+  "schema_version": "trainomni.sample.v0.1",
+  "id": "invalid-dangling",
+  "objective": "sft",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "media", "asset_id": "missing"},
+        {"type": "text", "text": "What is this?"}
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "Unknown."}]
+    }
+  ]
+}
+

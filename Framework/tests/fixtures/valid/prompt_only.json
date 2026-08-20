@@ -1,0 +1,33 @@
+{
+  "schema_version": "trainomni.sample.v0.1",
+  "id": "rlvr-000001",
+  "objective": "prompt_only",
+  "assets": [
+    {
+      "id": "chart",
+      "modality": "image",
+      "uri": "charts/000001.png"
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "media", "asset_id": "chart"},
+        {"type": "text", "text": "计算图中 2024 相比 2023 的增长率。"}
+      ]
+    }
+  ],
+  "rollout": {
+    "reference_answer": 0.125,
+    "max_completion_tokens": 512,
+    "verifiers": [
+      {
+        "type": "numeric_tolerance",
+        "weight": 1.0,
+        "spec": {"absolute_tolerance": 0.001}
+      }
+    ]
+  }
+}
+

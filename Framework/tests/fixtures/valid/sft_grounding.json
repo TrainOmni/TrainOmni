@@ -1,0 +1,41 @@
+{
+  "schema_version": "trainomni.sample.v0.1",
+  "id": "sft-ground-000001",
+  "objective": "sft",
+  "assets": [
+    {
+      "id": "scene",
+      "modality": "image",
+      "uri": "images/scene.jpg",
+      "width": 1280,
+      "height": 720
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "media", "asset_id": "scene"},
+        {"type": "text", "text": "指出红色汽车的位置。"}
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {"type": "text", "text": "红色汽车在"},
+        {
+          "type": "bbox",
+          "asset_id": "scene",
+          "xyxy": [244, 301, 612, 633],
+          "coordinate_space": "pixel",
+          "label": "red car"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "source": "m0-fixture",
+    "language": "zh"
+  }
+}
+

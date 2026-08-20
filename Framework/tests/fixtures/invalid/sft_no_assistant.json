@@ -1,0 +1,12 @@
+{
+  "schema_version": "trainomni.sample.v0.1",
+  "id": "invalid-sft-no-assistant",
+  "objective": "sft",
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "No target follows."}]
+    }
+  ]
+}
+

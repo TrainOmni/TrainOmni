@@ -1,0 +1,4 @@
+interface:
+  display_name: "Handoff"
+  short_description: "Coordinate registered Codex tasks and route requests"
+  default_prompt: "Use $handoff to register this explicitly assigned task or route a cross-task request."
