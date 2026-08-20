@@ -10,5 +10,4 @@ Current areas:
 - `Downloads/`: reproducible asset manifests; large model files live outside this repository.
 - `handoff/`: cross-task coordination skill, protocol, and shared context.
 
-The canonical project root is `D:\Codex\TrainOmni`. During migration, `D:\Codex\TrainVLM` is retained only as a compatibility junction for existing Codex tasks.
-
+The canonical and only project root is `D:\Codex\TrainOmni`.
