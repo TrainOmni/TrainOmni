@@ -1,0 +1,75 @@
+schema_version: trainomni.pipeline.v1
+name: tiny_llava_two_stage_smoke
+seed: 20260820
+model:
+  plugin: tiny-llava
+  config:
+    checkpoint: Xenova/tiny-random-LlavaForConditionalGeneration
+    load_dtype: fp32
+stages:
+  - stage_id: align
+    stage_type: modality_alignment
+    objective: sft
+    objective_impl: masked-causal-lm
+    data: &tiny_data
+      datasets:
+        - dataset_id: tiny_llava
+          uri: ../../tests/fixtures/datasets/tiny_llava_sft.jsonl
+          importer: canonical
+      modalities: [text, image]
+      content_blocks: [text, media]
+      max_media_per_sample: 1
+      packing: false
+      padding_free: false
+      config:
+        max_samples: 1
+        max_text_tokens: 256
+        max_pixels: 1024
+        repeat: true
+    component_policy: &connector_only
+      vision_encoder: {trainable: false}
+      connector: {trainable: true, learning_rate: 0.0001, gradient_clip: 1.0}
+      language_model: {trainable: false}
+    optimization: &optimization
+      optimizer: adamw
+      learning_rate: 0.0001
+      weight_decay: 0.0
+      max_steps: 1
+      gradient_accumulation_steps: 1
+      config: {scheduler: constant}
+    engine: &engine
+      backend: torch
+      parallelism: single
+      precision: fp32
+      attention_backend: eager
+      config: {device: cpu}
+    checkpoint: &checkpoint
+      every_steps: 1
+      resume_level: exact
+      export_formats: [hf]
+    inputs: {}
+    evaluations: []
+    gates:
+      - {type: metric, metric: step, op: ge, value: 1}
+    outputs: {}
+  - stage_id: curriculum
+    stage_type: capability_curriculum
+    objective: sft
+    objective_impl: masked-causal-lm
+    data: *tiny_data
+    component_policy: *connector_only
+    optimization: *optimization
+    engine: *engine
+    checkpoint: *checkpoint
+    inputs: {}
+    evaluations: []
+    gates:
+      - {type: metric, metric: step, op: ge, value: 1}
+    outputs: {}
+edges:
+  - from_stage: align
+    to_stage: curriculum
+    input_slot: model
+    selector: last
+metadata:
+  purpose: public real-model pipeline smoke

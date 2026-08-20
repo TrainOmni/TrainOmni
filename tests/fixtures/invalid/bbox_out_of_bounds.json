@@ -1,0 +1,32 @@
+{
+  "schema_version": "trainomni.sample.v0.1",
+  "id": "invalid-bbox",
+  "objective": "sft",
+  "assets": [
+    {
+      "id": "scene",
+      "modality": "image",
+      "uri": "scene.png",
+      "width": 100,
+      "height": 100
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "media", "asset_id": "scene"}]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "bbox",
+          "asset_id": "scene",
+          "xyxy": [10, 20, 120, 90],
+          "coordinate_space": "pixel"
+        }
+      ]
+    }
+  ]
+}
+

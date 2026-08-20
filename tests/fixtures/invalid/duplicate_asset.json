@@ -1,0 +1,20 @@
+{
+  "schema_version": "trainomni.sample.v0.1",
+  "id": "invalid-duplicate-asset",
+  "objective": "sft",
+  "assets": [
+    {"id": "same", "modality": "image", "uri": "a.png"},
+    {"id": "same", "modality": "image", "uri": "b.png"}
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "media", "asset_id": "same"}]
+    },
+    {
+      "role": "assistant",
+      "content": [{"type": "text", "text": "A test."}]
+    }
+  ]
+}
+
