@@ -24,6 +24,9 @@ from .probe import (
 )
 from .protocol import (
     MODEL_PLUGIN_API_VERSION,
+    ActivationCheckpointingPlugin,
+    ActivationCheckpointingReceipt,
+    ActivationCheckpointingRequest,
     CapabilityIssue,
     CapabilityReport,
     ComponentCatalog,
@@ -38,6 +41,9 @@ from .protocol import (
 __all__ = [
     "MODEL_PLUGIN_API_VERSION",
     "REQUIRED_PLUGIN_METHODS",
+    "ActivationCheckpointingPlugin",
+    "ActivationCheckpointingReceipt",
+    "ActivationCheckpointingRequest",
     "CapabilityIssue",
     "CapabilityReport",
     "CheckpointProbe",

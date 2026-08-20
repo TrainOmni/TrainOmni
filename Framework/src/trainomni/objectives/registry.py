@@ -7,6 +7,8 @@ from typing import Any
 
 from trainomni.models import ModelBatch
 
+from .cached_dpo import OfflineReferenceDPOObjective
+from .cached_kd import OfflineDenseLogitKDObjective
 from .protocol import (
     LossOutput,
     LossTerm,
@@ -25,6 +27,8 @@ class ObjectiveRegistry:
         self._objectives: dict[str, Objective] = {}
         if include_builtins:
             self.register(MaskedCausalLMObjective())
+            self.register(OfflineDenseLogitKDObjective())
+            self.register(OfflineReferenceDPOObjective())
             self.register(
                 DelegatedObjective(
                     "dpo",

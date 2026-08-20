@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -26,6 +29,7 @@ from trainomni.data import (
     StatefulBatchStream,
     open_dataset_streams,
 )
+from trainomni.data.batching import BatchPlanningError
 from trainomni.evaluation import (
     EvaluationRequest,
     LossEvaluator,
@@ -121,6 +125,73 @@ class RuntimeDataTests(unittest.TestCase):
             actual = [next(restored).sample_ids for _ in range(5)]
             self.assertEqual(actual, expected)
             self.assertTrue(first.sample_ids)
+
+    def test_data_spec_resume_identity_canonicalizes_only_set_fields(self) -> None:
+        plugin = load_toy_plugin()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            datasets = tuple(item.spec for item in self._streams(root))
+            data_spec = DataSpec(
+                datasets=datasets,
+                modalities=frozenset({"text", "image"}),
+                content_blocks=frozenset({"text", "media"}),
+                max_media_per_sample=1,
+                config={"max_samples": 1, "repeat": True},
+            )
+
+            def stream() -> StatefulBatchStream:
+                return StatefulBatchStream(
+                    MixtureStream(self._streams(root), seed=7, repeat=True),
+                    plugin=plugin,
+                    sample_objective="sft",
+                    stage_id="sft",
+                    budget=BatchBudget(max_samples=1),
+                    packing=False,
+                    data_spec=data_spec,
+                )
+
+            original = stream()
+            next(original)
+            state = original.state_dict()
+            self.assertEqual(state["data_spec"]["modalities"], ["image", "text"])
+            self.assertEqual(
+                state["data_spec"]["content_blocks"], ["media", "text"]
+            )
+
+            reversed_sets = copy.deepcopy(state)
+            reversed_sets["data_spec"]["modalities"].reverse()
+            reversed_sets["data_spec"]["content_blocks"].reverse()
+            restored = stream()
+            restored.load_state_dict(reversed_sets)
+            self.assertEqual(next(restored).sample_ids, next(original).sample_ids)
+
+            reversed_datasets = copy.deepcopy(state)
+            reversed_datasets["data_spec"]["datasets"].reverse()
+            with self.assertRaisesRegex(BatchPlanningError, "data_spec mismatch"):
+                stream().load_state_dict(reversed_datasets)
+
+            code = (
+                "import json,sys;"
+                f"sys.path.insert(0,{str(SRC_ROOT)!r});"
+                "from trainomni.config import DataSpec;"
+                "from trainomni.data.runtime import _data_spec_state;"
+                "value=DataSpec(modalities=frozenset({'text','image'}),"
+                "content_blocks=frozenset({'text','media'}),max_media_per_sample=1);"
+                "print(json.dumps(_data_spec_state(value),sort_keys=True))"
+            )
+            outputs = []
+            for seed in ("1", "31337"):
+                environment = os.environ.copy()
+                environment["PYTHONHASHSEED"] = seed
+                outputs.append(
+                    subprocess.check_output(
+                        [sys.executable, "-c", code],
+                        cwd=FRAMEWORK_ROOT,
+                        env=environment,
+                        text=True,
+                    ).strip()
+                )
+            self.assertEqual(outputs[0], outputs[1])
 
     def test_distributed_batch_grouping_is_rank_deterministic(self) -> None:
         plugin = load_toy_plugin()

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from trainomni.data import CanonicalSample
@@ -251,6 +252,42 @@ class ComponentCatalog:
                 )
         frozen = {key: tuple(value) for key, value in assignments.items()}
         return frozen, tuple(issues)
+
+
+@dataclass(frozen=True, slots=True)
+class ActivationCheckpointingRequest:
+    component_id: str
+    use_reentrant: bool = False
+    config: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.component_id.strip():
+            raise ValueError("activation-checkpoint component_id must not be blank")
+        object.__setattr__(self, "config", MappingProxyType(dict(self.config)))
+
+
+@dataclass(frozen=True, slots=True)
+class ActivationCheckpointingReceipt:
+    component_id: str
+    implementation: str
+    use_reentrant: bool
+    enabled: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.component_id.strip() or not self.implementation.strip():
+            raise ValueError(
+                "activation-checkpoint receipt identity must not be blank"
+            )
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+
+
+class ActivationCheckpointingPlugin(Protocol):
+    def configure_activation_checkpointing(
+        self,
+        bundle: Any,
+        requests: Mapping[str, ActivationCheckpointingRequest],
+    ) -> Mapping[str, ActivationCheckpointingReceipt]: ...
 
 
 class ModelFamilyPlugin(Protocol):

@@ -17,6 +17,14 @@ from trainomni.data import (
     batch_budget_from_data,
     open_dataset_streams,
 )
+from trainomni.engines.torch_engine import (
+    configure_torch_precision,
+    import_torch,
+    move_model_batch,
+    prepare_models_for_evaluation,
+    select_torch_device,
+    torch_autocast_context,
+)
 from trainomni.evaluation import EvaluationRequest, EvaluatorRegistry
 from trainomni.models import ModelBuildContext, ModelBundle
 from trainomni.objectives import ObjectiveRegistry, resolve_objective
@@ -72,20 +80,57 @@ def evaluate_run(
         data_spec=resolved.run.stage.data,
     )
     evaluator = EvaluatorRegistry().get(evaluator_id)
-    result = evaluator.evaluate(
-        EvaluationRequest(
-            run_name=resolved.run.name,
-            model_bundle=bundle,
-            batches=batches,
-            objective=binding.objective,
-            output_dir=output_dir,
-            config={"max_batches": max_batches, **dict(evaluator_config or {})},
+    execution = {
+        "backend": resolved.run.stage.engine.backend,
+        "precision": resolved.run.stage.engine.precision,
+        "device": None,
+        "mode": "delegated" if evaluator.manifest.delegated else "local",
+    }
+    request_batches: Any = batches
+    if evaluator.manifest.delegated:
+        result = evaluator.evaluate(
+            _evaluation_request(
+                resolved,
+                bundle,
+                request_batches,
+                binding.objective,
+                output_dir,
+                max_batches,
+                evaluator_config,
+            )
         )
-    )
+    else:
+        if resolved.run.stage.engine.backend != "torch":
+            raise RuntimeError(
+                "local evaluation requires stage.engine.backend='torch'; "
+                "use a delegated evaluator for backend-owned execution"
+            )
+        torch = import_torch()
+        device = select_torch_device(torch, resolved.run.stage.engine.config)
+        precision = resolved.run.stage.engine.precision
+        configure_torch_precision(torch, precision, device)
+        prepare_models_for_evaluation(bundle, device)
+        request_batches = _batches_on_device(batches, device)
+        execution["device"] = str(device)
+        with torch.inference_mode(), torch_autocast_context(
+            torch, precision, device
+        ):
+            result = evaluator.evaluate(
+                _evaluation_request(
+                    resolved,
+                    bundle,
+                    request_batches,
+                    binding.objective,
+                    output_dir,
+                    max_batches,
+                    evaluator_config,
+                )
+            )
     payload = {
         "schema_version": "trainomni.evaluation.v1",
         "run_fingerprint": resolved.fingerprint,
         "evaluator": result.evaluator_id,
+        "execution": execution,
         "metrics": dict(result.metrics),
         "counts": dict(result.counts),
         "artifacts": dict(result.artifacts),
@@ -98,3 +143,27 @@ def evaluate_run(
     )
     os.replace(temporary, target)
     return payload
+
+
+def _evaluation_request(
+    resolved: ResolvedRunSpec,
+    bundle: ModelBundle,
+    batches: Any,
+    objective: Any,
+    output_dir: Path,
+    max_batches: int,
+    evaluator_config: Mapping[str, Any] | None,
+) -> EvaluationRequest:
+    return EvaluationRequest(
+        run_name=resolved.run.name,
+        model_bundle=bundle,
+        batches=batches,
+        objective=objective,
+        output_dir=output_dir,
+        config={"max_batches": max_batches, **dict(evaluator_config or {})},
+    )
+
+
+def _batches_on_device(batches: Any, device: Any) -> Any:
+    for batch in batches:
+        yield move_model_batch(batch, device)

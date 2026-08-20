@@ -52,7 +52,13 @@ Checkpoint state contains every cursor/RNG/buffer needed to reproduce the next b
 
 ## 4. Objective and engine separation
 
-`stage.objective` is the sample semantic contract (`cpt/sft/preference/prompt_only`)；`stage.objective_impl` is the loss/algorithm (`masked-causal-lm/dpo/distillation/grpo/ppo`)。这避免 model sample validation 与某个 Trainer 算法耦合。
+`stage.objective` is the sample semantic contract (`cpt/sft/preference/prompt_only`)；`stage.objective_impl` is the loss/algorithm (`masked-causal-lm/offline-dense-logit-kd/offline-reference-dpo/dpo/distillation/grpo/ppo`)。这避免 model sample validation 与某个 Trainer 算法耦合。
+
+Native `offline-dense-logit-kd` adds an objective setup lifecycle that verifies immutable external cache/checkpoint/assets before step 1 and returns typed runtime state plus exact-resume metadata. The torch engine persists that identity in every checkpoint and compares it after external re-preflight during resume. The batch objective injects verified BF16 teacher logits by sample ID, strips KD-only fields before the student forward, and computes CE plus `T² KL(teacher||student)` entirely in FP32 without a live teacher.
+
+Native `offline-reference-dpo` reuses that setup lifecycle for a typed preference manifest and FP32 per-token reference-log-prob cache. Its paired model-batch contract re-derives chosen/rejected target positions from real labels, enforces common prompt/media model inputs, performs two policy forwards and computes original beta-0.1 sigmoid DPO in FP32. Objective-declared counters are registered as exact-resume state objects before checkpoint load, so pair and branch-token cursors cannot disappear during resume.
+
+`StatefulBatchStream` serializes a canonical DataSpec identity: schema-level set fields `modalities` and `content_blocks` are sorted on save and normalized on load, including checkpoints written before this fix. Dataset order and every other order-sensitive field remain strict. This prevents Python hash-order differences across processes from causing false exact-resume mismatches without weakening dataset/cursor identity.
 
 Native torch engine owns ordinary loop semantics. Rollout、actor/reference/reward、多服务权重同步不是 batch loss，因此作为 delegated Stage 执行。Delegated command始终 `shell=False`，需要 `allow_external_command: true`，通过 result JSON 返回 metrics/artifacts。
 
@@ -91,6 +97,12 @@ Variable-size VLM samples make “each rank independently packs its shard”容�
 
 ## 7. Checkpoint design
 
+Optimizer selection is explicit through `optimizer_config`. Native torch AdamW accepts a recorded `foreach` choice；optional bitsandbytes AdamW8bit requires explicit 8-bit quantization and CUDA, and never falls back. Run/checkpoint metadata records optimizer implementation/class/package version, configured and actual defaults, quantization, state tensor dtypes/counts and full-state exact-resume identity. Exact resume rejects missing or mismatched optimizer metadata after loading the full state.
+
+P1 diagnostics can gate optimizer-contained `trainable_numel`, required components, finite nonzero gradient norms, exact component-level parameter update scans and CUDA peak reserved bytes. The update gate snapshots optimizer-held parameters to CPU in their native dtype, then performs a bounded-chunk bitwise comparison after `optimizer.step()`; this avoids a single-element BF16 false negative while keeping accelerator scratch memory bounded. Structured evidence is persisted in run/checkpoint manifests；flat numeric paths are appended to `metrics.jsonl`.
+
+Activation checkpointing is a model-plugin responsibility at the real component boundary. Core sends separate typed requests and validates exact typed receipts, including `use_reentrant`；it deliberately has no top-level-hook fallback for composite models.
+
 ### Single/DDP
 
 - sibling incomplete directory；
@@ -120,6 +132,8 @@ Executor reuse会从 durable state 重建 in-memory catalog，因此成功或失
 ## 9. Evaluation and export
 
 - Loss evaluator aggregates named terms using each term denominator, not a misleading mean-of-means。
+- Local evaluation reuses the native torch engine's device and precision helpers: all objective-visible models and nested batch tensors move to `stage.engine.config.device`, models enter `eval()`, and evaluator execution is wrapped by `inference_mode()` plus the configured autocast/TF32 policy。
+- `evaluation.json` records the resolved backend, device, precision and local/delegated execution mode；delegated evaluators keep their existing shell-free external contract。
 - External evaluator is shell-free and requires explicit authorization。
 - Local exact checkpoint export requires trust; core restores only the model state with `strict=False` registry matching。
 - DCP `model_only` can load into an unsharded model in one process, then model plugin emits HF/safetensors or another deployment format。

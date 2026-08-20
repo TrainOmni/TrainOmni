@@ -1,5 +1,11 @@
 # TrainOmni v1 Support Matrix
 
+本文件定义产品能力边界；逐条训练通路的当前验收状态、upstream foundation
+与真实 VLM 接入合同，以
+[`../verification/training-path-coverage-2026-08-21.md`](../verification/training-path-coverage-2026-08-21.md)
+为准。标准能力采用 upstream-first thin adapter，已冻结的原生 SFT/KD/DPO
+仅作为已验证参考路径保留，不作为继续扩写自研训练栈的先例。
+
 当前产品策略是 VLM-first。名称为 TrainOmni 是为了稳定长期公共协议，不表示 v1 已实现全部输入/输出模态或 diffusion 生成训练。
 
 本文区分四种状态，避免把“接口存在”误写成“本地原生实现”：
@@ -18,9 +24,9 @@
 | Multimodal CPT | Stage/Pipeline | torch masked causal LM | Native |
 | Capability curriculum | Stage/Pipeline | torch | Native |
 | Instruction SFT | Stage/Pipeline | torch | Native |
-| Reasoning distillation | Stage/Pipeline | TRL/NeMo/custom | Delegated |
+| Reasoning distillation | Native offline full-vocab cached-logit KD; broader recipes remain delegated | Torch / TRL / NeMo / custom | Hybrid |
 | Reward/verifier | Stage/Pipeline | custom/TRL/veRL | Delegated |
-| Offline preference | Stage/Pipeline | TRL/custom DPO | Delegated |
+| Offline preference | Native offline-reference sigmoid DPO; broader/live-reference recipes delegated | Torch / TRL / custom | Hybrid |
 | Online RL/RLVR | Stage/Pipeline | veRL/TRL/custom GRPO/PPO | Delegated |
 | Agentic RL | Stage/Pipeline | veRL/AReaL/custom | Delegated |
 | Evaluation/export | Stage or CLI | internal/external/plugin | Native control |
@@ -68,9 +74,13 @@
 | Gradient accumulation/clipping | Native | Native | Native | Backend contract |
 | FP32/TF32/FP16/BF16 | Native | Native | Native | Capability negotiation |
 | FP8 | — | — | — | NeMo/backend |
-| Activation checkpointing | Native model hook | Native | Native | Backend |
+| Activation checkpointing | Plugin-owned per-component typed receipt | Same | Same | Backend |
 | LoRA/QLoRA | Native optional PEFT | Native | Native | Backend |
 | `torch.compile` | Native option | Native option | Backend/version dependent | Backend |
+| AdamW `foreach=false` | Native explicit config | Native | Native | Backend |
+| AdamW8bit | Optional bitsandbytes CUDA, no fallback | Not yet conformed | Not claimed | Backend |
+| Component grad/update evidence | Native opt-in; exact CPU-snapshot bitwise scan | Native opt-in; local shard/replica counts are globally reduced | P1 claim not yet conformed | Backend |
+| CUDA allocated/reserved peak | Native | Per rank | Per rank | Backend metrics |
 | TP/PP/CP/SP/EP | — | — | — | VeOmni/NeMo/veRL/custom |
 
 ## Checkpoint and recovery
@@ -85,6 +95,17 @@
 | FSDP2 exact resume with changed world size | Not claimed; runtime state is topology-specific |
 | DCP model-only reshard/load to single process | Native and verified |
 | Safe deploy export | plugin-owned safe format; local exact pickle requires trust |
+
+## Evaluation
+
+| Capability | State |
+|---|---|
+| Normalized named-loss aggregation | Native |
+| Configured CPU/CUDA model and batch placement | Native, shared torch-engine policy |
+| FP32/TF32/FP16/BF16 evaluation context | Native `eval()` + `inference_mode()` + autocast/TF32 |
+| Auxiliary teacher/reference model placement | Native |
+| External benchmark harness | Delegated, explicit shell-free command authorization |
+| Execution metadata in `evaluation.json` | Native |
 
 ## Infrastructure
 

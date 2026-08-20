@@ -189,6 +189,7 @@ def execute_stage(
         objective=binding,
         batches=batches,
         output_dir=output_dir,
+        input_artifacts=request.input_artifacts,
         resume_from=request.resume_from,
         trusted_resume=request.trusted_resume,
         callbacks=(JsonlRunLogger(output_dir / "metrics.jsonl"),) if is_primary else (),
@@ -224,6 +225,7 @@ def _write_run_manifest(
         "objective_impl": objective_impl,
         "status": result.status,
         "metrics": dict(result.metrics),
+        "metadata": dict(result.metadata),
         "outputs": {
             key: {"ref": str(value), "uri": value.uri}
             for key, value in result.outputs.items()

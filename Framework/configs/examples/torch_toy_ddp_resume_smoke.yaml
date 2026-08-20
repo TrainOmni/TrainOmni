@@ -26,6 +26,15 @@ stage:
     weight_decay: 0.0
     max_steps: 2
     gradient_accumulation_steps: 1
+    diagnostics:
+      record_gpu_memory: false
+      component_grad_norms: true
+      component_update_probes: true
+      update_probe_chunk_elements: 64
+      require_finite_nonzero_gradients: true
+      require_parameter_updates: true
+      expected_trainable_numel: 1176
+      required_components: [vision_encoder, connector, language_model]
   engine:
     backend: torch
     parallelism: ddp

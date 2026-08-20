@@ -8,6 +8,7 @@ from typing import Any
 
 from trainomni.contracts import BatchPlan, CostVector
 from trainomni.models import (
+    ActivationCheckpointingReceipt,
     ComponentCatalog,
     ComponentRule,
     EncodedSample,
@@ -53,12 +54,29 @@ class TorchToyPlugin:
                 self.connector = torch.nn.Linear(8, 8)
                 self.language = torch.nn.Embedding(64, 8)
                 self.lm_head = torch.nn.Linear(8, 64)
+                self.activation_checkpointing = {}
 
             def forward(self, input_ids, labels, **kwargs):
-                hidden = self.language(input_ids)
+                from torch.utils.checkpoint import checkpoint
+
+                def apply(component_id, module, *args):
+                    if component_id not in self.activation_checkpointing:
+                        return module(*args)
+                    return checkpoint(
+                        module,
+                        *args,
+                        use_reentrant=self.activation_checkpointing[component_id],
+                    )
+
+                hidden = apply("language_model", self.language, input_ids)
                 # Preserve a VLM-shaped component in the graph even for text-only tests.
-                vision = self.vision(torch.ones((*hidden.shape[:-1], 1), device=hidden.device))
-                logits = self.lm_head(self.connector(hidden + vision))
+                vision = apply(
+                    "vision_encoder",
+                    self.vision,
+                    torch.ones((*hidden.shape[:-1], 1), device=hidden.device),
+                )
+                connected = apply("connector", self.connector, hidden + vision)
+                logits = self.lm_head(connected)
                 loss = torch.nn.functional.cross_entropy(
                     logits.reshape(-1, logits.shape[-1]),
                     labels.reshape(-1),
@@ -67,6 +85,24 @@ class TorchToyPlugin:
                 return {"loss": loss, "logits": logits}
 
         return ModelBundle(ToyModel(), metadata={"kind": "torch-toy"})
+
+    def configure_activation_checkpointing(self, bundle, requests):
+        known = {"vision_encoder", "connector", "language_model"}
+        unknown = set(requests) - known
+        if unknown:
+            raise ValueError(f"unknown checkpoint components: {sorted(unknown)}")
+        receipts = {}
+        for component_id, request in requests.items():
+            bundle.model.activation_checkpointing[component_id] = (
+                request.use_reentrant
+            )
+            receipts[component_id] = ActivationCheckpointingReceipt(
+                component_id=component_id,
+                implementation="torch.utils.checkpoint.checkpoint",
+                use_reentrant=request.use_reentrant,
+                metadata={"toy_component": component_id},
+            )
+        return receipts
 
     def component_catalog(self, bundle):
         return ComponentCatalog(

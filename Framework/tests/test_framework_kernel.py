@@ -216,6 +216,43 @@ class FrameworkKernelTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RunSpec.model_validate(value)
 
+    def test_optimizer_contract_rejects_ambiguous_or_implicit_quantization(self) -> None:
+        base = load_run_spec(TOY_CONFIG).model_dump(mode="json")
+
+        unknown = json.loads(json.dumps(base))
+        unknown["stage"]["optimization"]["optimizer_config"] = {
+            "implementation": "torch",
+            "foreach": False,
+            "kwargs": {},
+            "quantization": None,
+            "fallback": "adamw",
+        }
+        with self.assertRaisesRegex(ValidationError, "fallback"):
+            RunSpec.model_validate(unknown)
+
+        ambiguous = json.loads(json.dumps(base))
+        ambiguous["stage"]["optimization"]["optimizer_config"] = {
+            "implementation": "torch",
+            "foreach": False,
+            "kwargs": {},
+            "quantization": None,
+        }
+        ambiguous["stage"]["optimization"]["config"]["optimizer"] = {
+            "foreach": False
+        }
+        with self.assertRaisesRegex(ValidationError, "do not combine"):
+            RunSpec.model_validate(ambiguous)
+
+        implicit_quantization = json.loads(json.dumps(base))
+        implicit_quantization["stage"]["optimization"]["optimizer_config"] = {
+            "implementation": "bitsandbytes",
+            "foreach": None,
+            "kwargs": {},
+            "quantization": None,
+        }
+        with self.assertRaisesRegex(ValidationError, "explicit quantization"):
+            RunSpec.model_validate(implicit_quantization)
+
     def test_fingerprint_is_stable_across_python_hash_seeds(self) -> None:
         code = (
             "from trainomni.config import canonical_fingerprint, load_run_spec; "

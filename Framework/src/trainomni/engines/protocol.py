@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
@@ -119,6 +119,7 @@ class StageResult:
     status: str
     outputs: Mapping[str, ArtifactRef]
     metrics: Mapping[str, float]
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 class EngineAdapter(Protocol):

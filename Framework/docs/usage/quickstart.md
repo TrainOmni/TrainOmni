@@ -68,6 +68,8 @@ trainomni --plugin $plugin export configs/examples/tiny_llava_smoke.yaml `
   --trusted-checkpoint --output-dir runs/tiny-llava-hf --format hf
 ```
 
+内置本地 evaluator 遵循 recipe 的 `stage.engine.config.device` 和 `stage.engine.precision`：主模型、辅助模型和 batch 会移动到同一 device，并在 `eval()`、`inference_mode()` 与对应 autocast/TF32 上下文中执行。实际解析出的 backend/device/precision 会写入 `evaluation.json` 的 `execution` 字段。
+
 FSDP2 DCP 的 `model_only` 不读取 rank runtime pickle，可直接在单进程重分片并导出，不需要 `--trusted-checkpoint`。
 
 ## 6. Pipeline

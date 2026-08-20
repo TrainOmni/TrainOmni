@@ -56,6 +56,8 @@ audio_encoder
 
 Recipe 的 freeze、LR、weight decay、dtype、grad clip、activation checkpointing 和 PEFT 都依赖该边界。
 
+Composite activation checkpointing 通过可选的 `configure_activation_checkpointing(bundle, requests)` plugin hook 完成。Core 为 vision/connector/LLM 分别发送 typed request，并要求 typed receipt 精确覆盖；不会调用可能无效的 composite 顶层 hook。真全参数 SFT 的配置和 receipt 示例见 [Full-parameter SFT P1 contract](full-parameter-sft-p1.md)。
+
 ## Encode and loss mask
 
 `encode()` 负责 canonical blocks 到模型 processor ABI 的投影：
@@ -67,6 +69,8 @@ Recipe 的 freeze、LR、weight decay、dtype、grad clip、activation checkpoin
 - `SourceSpan` 和 trace。
 
 必须确保 `sample_id` 不变。`collate()` 只能按给定 `BatchPlan` 顺序形成精确 forward kwargs，返回 `ModelBatch`。
+
+Native offline-reference DPO 的 preference plugin 使用严格的 batch-size-1 `chosen`/`rejected` nested kwargs 和 `dpo_pair_identity`，并由 objective 重新验证 common prompt/media、真实 labels mask 与 cache。不要把 reference cache 读取逻辑放入 model plugin；完整字段见 [Offline-reference DPO contract](offline-reference-dpo.md)。
 
 ## Export
 
@@ -87,6 +91,7 @@ Core 先把 local checkpoint 或 DCP `model_only` 加载到 bundle，再调用 p
 6. Freeze and optimizer groups.
 7. Save, exact resume, evaluation and export.
 8. Every declared distributed feature has its own smoke.
+9. Every requested activation-checkpoint component returns a matching receipt and exercises real forward/backward with the requested `use_reentrant` value.
 
 加载方式：
 

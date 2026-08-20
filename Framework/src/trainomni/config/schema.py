@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RUN_SCHEMA_VERSION = "trainomni.run.v1"
 STAGE_TYPES = frozenset(
@@ -86,14 +86,117 @@ class PeftSpec(StrictModel):
         return self
 
 
+class ActivationCheckpointingSpec(StrictModel):
+    """Per-component checkpointing request consumed by a model plugin hook."""
+
+    use_reentrant: bool = False
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class OptimizerQuantizationSpec(StrictModel):
+    bits: Literal[8] = 8
+    min_8bit_size: int = Field(default=4096, gt=0)
+    percentile_clipping: float = Field(default=100.0, gt=0, le=100)
+    block_wise: bool = True
+    paged: bool = False
+
+
+class OptimizerConfig(StrictModel):
+    """Select one optimizer implementation without an implicit fallback."""
+
+    implementation: Literal["torch", "bitsandbytes"] = "torch"
+    foreach: bool | None = None
+    kwargs: dict[str, Any] = Field(default_factory=dict)
+    quantization: OptimizerQuantizationSpec | None = None
+
+    @model_validator(mode="after")
+    def validate_implementation(self) -> OptimizerConfig:
+        reserved = {
+            "params",
+            "lr",
+            "weight_decay",
+            "component_id",
+            "foreach",
+            "optim_bits",
+            "min_8bit_size",
+            "percentile_clipping",
+            "block_wise",
+            "is_paged",
+        }
+        conflicts = reserved.intersection(self.kwargs)
+        if conflicts:
+            raise ValueError(
+                "optimizer_config.kwargs contains core-owned fields: "
+                f"{sorted(conflicts)}"
+            )
+        if self.implementation == "torch":
+            if self.quantization is not None:
+                raise ValueError(
+                    "torch optimizer implementation cannot define quantization"
+                )
+        else:
+            if self.foreach is not None:
+                raise ValueError(
+                    "bitsandbytes optimizer does not accept torch foreach"
+                )
+            if self.quantization is None:
+                raise ValueError(
+                    "bitsandbytes optimizer requires explicit quantization"
+                )
+        return self
+
+
+class TrainingDiagnosticsSpec(StrictModel):
+    record_gpu_memory: bool = True
+    component_grad_norms: bool = False
+    component_update_probes: bool = False
+    update_probe_chunk_elements: int = Field(default=1_048_576, gt=0)
+    require_finite_nonzero_gradients: bool = False
+    require_parameter_updates: bool = False
+    expected_trainable_numel: int | None = Field(default=None, gt=0)
+    required_components: tuple[str, ...] = ()
+    max_reserved_bytes: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_dependencies(self) -> TrainingDiagnosticsSpec:
+        if len(set(self.required_components)) != len(self.required_components) or any(
+            not item.strip() for item in self.required_components
+        ):
+            raise ValueError(
+                "diagnostics.required_components must be unique and non-blank"
+            )
+        if self.require_finite_nonzero_gradients and not self.component_grad_norms:
+            raise ValueError(
+                "require_finite_nonzero_gradients needs component_grad_norms=true"
+            )
+        if self.require_parameter_updates and not self.component_update_probes:
+            raise ValueError(
+                "require_parameter_updates needs component_update_probes=true"
+            )
+        if self.max_reserved_bytes is not None and not self.record_gpu_memory:
+            raise ValueError(
+                "max_reserved_bytes needs record_gpu_memory=true"
+            )
+        return self
+
+
 class ComponentPolicy(StrictModel):
     trainable: bool
     learning_rate: float | None = Field(default=None, gt=0)
     weight_decay: float | None = Field(default=None, ge=0)
     dtype: str | None = None
     gradient_clip: float | None = Field(default=None, gt=0)
-    activation_checkpointing: bool | None = None
+    activation_checkpointing: ActivationCheckpointingSpec | None = None
     peft: PeftSpec | None = None
+
+    @field_validator("activation_checkpointing", mode="before")
+    @classmethod
+    def normalize_activation_checkpointing(cls, value: Any) -> Any:
+        if value is True:
+            return {}
+        if value is False:
+            return None
+        return value
 
     @model_validator(mode="after")
     def validate_trainable_options(self) -> ComponentPolicy:
@@ -104,6 +207,7 @@ class ComponentPolicy(StrictModel):
                 self.weight_decay,
                 self.gradient_clip,
                 self.peft,
+                self.activation_checkpointing,
             )
         ):
             raise ValueError(
@@ -114,17 +218,35 @@ class ComponentPolicy(StrictModel):
 
 class OptimizationSpec(StrictModel):
     optimizer: str = "adamw"
+    optimizer_config: OptimizerConfig = OptimizerConfig()
     learning_rate: float = Field(default=1e-4, gt=0)
     weight_decay: float = Field(default=0.0, ge=0)
     max_steps: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
     gradient_accumulation_steps: int = Field(default=1, gt=0)
+    diagnostics: TrainingDiagnosticsSpec = TrainingDiagnosticsSpec()
     config: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_budget(self) -> OptimizationSpec:
         if self.max_steps is None and self.max_tokens is None:
             raise ValueError("one of max_steps or max_tokens is required")
+        if (
+            self.optimizer_config.implementation == "bitsandbytes"
+            and self.optimizer.lower() != "adamw"
+        ):
+            raise ValueError(
+                "bitsandbytes implementation currently supports only optimizer=adamw"
+            )
+        legacy = self.config.get("optimizer")
+        if legacy is not None:
+            if not isinstance(legacy, dict):
+                raise ValueError("optimization.config.optimizer must be a mapping")
+            if self.optimizer_config != OptimizerConfig():
+                raise ValueError(
+                    "do not combine legacy optimization.config.optimizer with "
+                    "optimizer_config"
+                )
         return self
 
 

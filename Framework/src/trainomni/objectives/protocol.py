@@ -66,6 +66,26 @@ class LossOutput:
             raise ValueError("LossOutput.terms must not be empty")
 
 
+@dataclass(frozen=True, slots=True)
+class ObjectiveSetup:
+    """Immutable external state prepared and audited before optimizer step 1."""
+
+    runtime: Any
+    metadata: Mapping[str, Any]
+    state_count_keys: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.metadata:
+            raise ValueError("ObjectiveSetup.metadata must not be empty")
+        if len(set(self.state_count_keys)) != len(self.state_count_keys) or any(
+            not key.strip() or not re.fullmatch(r"[a-z][a-z0-9_]*", key)
+            for key in self.state_count_keys
+        ):
+            raise ValueError(
+                "ObjectiveSetup.state_count_keys must be unique snake-case names"
+            )
+
+
 class Objective(Protocol):
     manifest: ObjectiveManifest
 

@@ -140,9 +140,7 @@ class StatefulBatchStream:
             "stage_id": self.stage_id,
             "budget": self.budget.to_dict(),
             "packing": self.packing,
-            "data_spec": (
-                self.data_spec.model_dump(mode="json") if self.data_spec else None
-            ),
+            "data_spec": _data_spec_state(self.data_spec),
             "batches": self._batches,
             "samples": self._samples,
             "pending": _encoded_state(self._pending) if self._pending else None,
@@ -156,12 +154,13 @@ class StatefulBatchStream:
             "stage_id": self.stage_id,
             "budget": self.budget.to_dict(),
             "packing": self.packing,
-            "data_spec": (
-                self.data_spec.model_dump(mode="json") if self.data_spec else None
-            ),
+            "data_spec": _data_spec_state(self.data_spec),
         }
         for key, value in expected.items():
-            if state.get(key) != value:
+            actual = state.get(key)
+            if key == "data_spec":
+                actual = _canonicalize_data_spec_state(actual)
+            if actual != value:
                 raise BatchPlanningError(f"batch stream {key} mismatch")
         mixture = state.get("mixture")
         if not isinstance(mixture, Mapping):
@@ -203,6 +202,29 @@ def _nonnegative_int(value: Any, name: str) -> int:
     if not isinstance(value, int) or value < 0:
         raise BatchPlanningError(f"batch stream {name} is invalid")
     return value
+
+
+def _data_spec_state(value: DataSpec | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return _canonicalize_data_spec_state(value.model_dump(mode="json"))
+
+
+def _canonicalize_data_spec_state(value: Any) -> Any:
+    """Normalize only DataSpec fields whose schema semantics are sets.
+
+    This also accepts checkpoints written before canonicalization. Dataset order,
+    weights, configs and every other field remain byte-for-byte strict.
+    """
+
+    if not isinstance(value, Mapping):
+        return value
+    result = dict(value)
+    for key in ("modalities", "content_blocks"):
+        items = result.get(key)
+        if isinstance(items, list):
+            result[key] = sorted(items)
+    return result
 
 
 def validate_sample_against_data(
