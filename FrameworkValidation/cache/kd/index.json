@@ -1,0 +1,12 @@
+{
+  "samples": {
+    "kd-0001": {
+      "file": "kd-0001.safetensors",
+      "sha256": "571a32d2651e3401cefee9f712df4ec73aeac1a2b5cc321bee9d42691111a8d9",
+      "tensors": {
+        "teacher_logits": "teacher_logits"
+      }
+    }
+  },
+  "schema_version": 1
+}

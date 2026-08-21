@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "name": "real-vlm-native-lora-offline-reference-dpo",
+  "local_modules": [
+    {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_model",
+      "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"
+    },
+    {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_io",
+      "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"
+    }
+  ],
+  "data": {
+    "source": {
+      "module": "data_source:trainomni/jsonl@1",
+      "config": {
+        "path": "data/dpo.jsonl",
+        "sha256": "8d4cace364ce6b6c370a659232ebbf73ecf1ea55f5db826890a21d83f9bfa16d",
+        "repeat": true
+      }
+    },
+    "transforms": [
+      {
+        "module": "sample_transform:trainomni/tensor_cache@1",
+        "config": {
+          "index_path": "cache/dpo/index.json",
+          "index_sha256": "d9cd34318f398f63845236eb70929d8b1c6034a81f28fff3a084dd76decf3e8b"
+        }
+      }
+    ],
+    "model_io": {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "config": {
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "mode": "preference",
+        "max_text_tokens": 96
+      }
+    },
+    "supervision": {"module": "supervision:trainomni/preference@1"},
+    "packer": {"module": "packer:trainomni/none@1"},
+    "collator": {
+      "module": "collator:trainomni/multimodal@1",
+      "config": {
+        "pad_token_id": 0,
+        "field_modes": {
+          "pixel_values": "concat",
+          "image_grid_thw": "concat",
+          "image_counts": "concat"
+        }
+      }
+    }
+  },
+  "model": {
+    "implementation": {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "config": {
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "load_dtype": "bf16",
+        "initial_artifact": "D:/Codex/TrainOmni/FrameworkValidation/artifacts/stage-04-kd",
+        "initial_artifact_sha256": "b76286a5eabdc8ec88e70d4a1267f458531d65b97635da211157abf1a4ac5a98"
+      }
+    },
+    "components": {}
+  },
+  "objective": {
+    "module": "objective:trainomni/offline_reference_dpo@1",
+    "config": {"beta": 0.1}
+  },
+  "parameters": {
+    "module": "parameter_policy:trainomni/lora_linear@1",
+    "config": {
+      "target_patterns": [
+        "connector\\.1",
+        "vision_encoder\\.blocks\\.[0-9]+\\.attn\\.(qkv|proj)",
+        "vision_encoder\\.blocks\\.[0-9]+\\.mlp\\.linear_fc(1|2)",
+        "vision_encoder\\.merger\\.linear_fc(1|2)",
+        "language_model\\.model\\.layers\\.[0-9]+\\.self_attn\\.(q_proj|k_proj|v_proj|o_proj)",
+        "language_model\\.model\\.layers\\.[0-9]+\\.mlp\\.(gate_proj|up_proj|down_proj)"
+      ],
+      "rank": 4,
+      "alpha": 8.0,
+      "dropout": 0.0,
+      "train_bias": false,
+      "group_name": "lora"
+    }
+  },
+  "evaluation": {
+    "data": {
+      "source": {
+        "module": "data_source:trainomni/jsonl@1",
+        "config": {
+          "path": "data/dpo.jsonl",
+          "sha256": "8d4cace364ce6b6c370a659232ebbf73ecf1ea55f5db826890a21d83f9bfa16d",
+          "repeat": true
+        }
+      },
+      "transforms": [
+        {
+          "module": "sample_transform:trainomni/tensor_cache@1",
+          "config": {
+            "index_path": "cache/dpo/index.json",
+            "index_sha256": "d9cd34318f398f63845236eb70929d8b1c6034a81f28fff3a084dd76decf3e8b"
+          }
+        }
+      ],
+      "model_io": {
+        "module": "model_io:validation/qwen35_vision_minicpm5@1",
+        "config": {
+          "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+          "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+          "mode": "preference",
+          "max_text_tokens": 96
+        }
+      },
+      "supervision": {"module": "supervision:trainomni/preference@1"},
+      "packer": {"module": "packer:trainomni/none@1"},
+      "collator": {
+        "module": "collator:trainomni/multimodal@1",
+        "config": {
+          "pad_token_id": 0,
+          "field_modes": {
+            "pixel_values": "concat",
+            "image_grid_thw": "concat",
+            "image_counts": "concat"
+          }
+        }
+      }
+    },
+    "evaluators": [
+      {
+        "module": "evaluator:trainomni/loss@1",
+        "config": {"term": "dpo", "metric_name": "lora_dpo_loss"}
+      }
+    ]
+  },
+  "exporters": [{"module": "exporter:trainomni/lora_adapter@1"}]
+}
+

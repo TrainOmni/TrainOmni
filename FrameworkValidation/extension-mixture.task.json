@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "real-vlm-extension-weighted-mixture",
+  "local_modules": [
+    {"module": "model:validation/qwen35_vision_minicpm5_ext@2", "path": "modules/qwen_minicpm_model_ext", "source_sha256": "15fa47740849fed526e95127aa5726edca473a51c57c1794dec6c7e1a002a5b0"},
+    {"module": "model_io:validation/qwen35_vision_minicpm5_ext@2", "path": "modules/qwen_minicpm_io_ext", "source_sha256": "6667cb9107dc00146351ee14b460cb518200ef046bbf027542319f0b20cd6744"}
+  ],
+  "data": {
+    "sources": {
+      "geometry": {"module": "data_source:trainomni/jsonl@1", "config": {"path": "data/mixture_geometry.jsonl", "sha256": "721e4db914ed8bde7b50d9987d0d9926d6c6142c915892f3eaf2b66591f90724", "repeat": true}},
+      "reasoning": {"module": "data_source:trainomni/jsonl@1", "config": {"path": "data/mixture_reasoning.jsonl", "sha256": "516399666c31801da5ed6afbaab06f453a529de42b9a4cf92d09bd3c07ce061a", "repeat": true}}
+    },
+    "source": {"module": "data_source:trainomni/mixture@1", "config": {"weights": {"geometry": 1.0, "reasoning": 3.0}, "seed": 260823, "namespace_sample_ids": true}},
+    "transforms": [],
+    "model_io": {"module": "model_io:validation/qwen35_vision_minicpm5_ext@2", "config": {"vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B", "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B", "mode": "sft", "max_text_tokens": 96}},
+    "supervision": {"module": "supervision:trainomni/causal_lm@1"},
+    "packer": {"module": "packer:trainomni/none@1"},
+    "collator": {"module": "collator:trainomni/multimodal@1", "config": {"pad_token_id": 0, "field_modes": {"input_ids": "pad", "attention_mask": "pad", "loss_mask": "pad", "pixel_values": "concat", "image_grid_thw": "concat", "image_counts": "concat"}}}
+  },
+  "model": {
+    "implementation": {"module": "model:validation/qwen35_vision_minicpm5_ext@2", "config": {"vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B", "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B", "load_dtype": "bf16", "initial_artifact": "D:/Codex/TrainOmni/FrameworkValidation/artifacts/stage-04-kd", "initial_artifact_sha256": "b76286a5eabdc8ec88e70d4a1267f458531d65b97635da211157abf1a4ac5a98"}},
+    "components": {},
+    "attention_policy": {"module": "attention_policy:trainomni/model_default@1"}
+  },
+  "objective": {"module": "objective:trainomni/causal_lm@1"},
+  "parameters": {"module": "parameter_policy:trainomni/component@1", "config": {"train": ["connector"], "group_per_component": true}},
+  "evaluation": {
+    "data": {
+      "source": {"module": "data_source:trainomni/jsonl@1", "config": {"path": "data/sft.jsonl", "sha256": "27b20665edaa859f98b9357553d3be081605246d9d1491ebcd87b8ffd7d1d7a5", "repeat": true}},
+      "transforms": [],
+      "model_io": {"module": "model_io:validation/qwen35_vision_minicpm5_ext@2", "config": {"vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B", "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B", "mode": "sft", "max_text_tokens": 96}},
+      "supervision": {"module": "supervision:trainomni/causal_lm@1"},
+      "packer": {"module": "packer:trainomni/none@1"},
+      "collator": {"module": "collator:trainomni/multimodal@1", "config": {"pad_token_id": 0, "field_modes": {"pixel_values": "concat", "image_grid_thw": "concat", "image_counts": "concat"}}}
+    },
+    "evaluators": [{"module": "evaluator:trainomni/loss@1", "config": {"term": "token_ce", "metric_name": "mixture_loss"}}]
+  },
+  "exporters": []
+}

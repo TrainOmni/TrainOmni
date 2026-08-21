@@ -1,0 +1,90 @@
+{
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "position_weighted_ce_loss": 4.593033629290259
+    },
+    "samples": 1
+  },
+  "inspection": {
+    "capabilities": [
+      "batch.labels",
+      "batch.omni",
+      "data.encoded",
+      "data.packed",
+      "data.sample.omni",
+      "data.source.stateful",
+      "data.supervised",
+      "evaluation.loss",
+      "model.monolithic",
+      "model.output.logits",
+      "model.parameters",
+      "objective.loss_bundle",
+      "objective.position_weighted_ce",
+      "parameters.component"
+    ],
+    "sample_ids": [
+      "sft-0001"
+    ],
+    "task_digest": "942a055694804e5bd01c50c4216e7c84620a1d0703db1fd1b327a8b5973be1eb"
+  },
+  "retention": {
+    "durable_receipt_contains_model_digest": true,
+    "large_temporary_checkpoint_removed_after_receipt": true
+  },
+  "route": "custom-objective",
+  "schema_version": 1,
+  "task": "D:\\Codex\\TrainOmni\\FrameworkValidation\\extension-custom-objective.task.json",
+  "training": {
+    "checkpoint": {
+      "global_step": 2,
+      "model_sha256": "438ba2a7e850be5c7bcabd4e459a933bc3ae87dc65fe399f085233b22878437f",
+      "run_digest": "4cef4dfa9da1ad9abb0779ead5ab90a67cc1c9b6fe444df48a8eabe2b5d38f4b",
+      "task_digest": "942a055694804e5bd01c50c4216e7c84620a1d0703db1fd1b327a8b5973be1eb"
+    },
+    "engine": {
+      "attention_kernel": "auto",
+      "attention_kernel_modules": [],
+      "device": "cuda:0",
+      "precision": "bf16_true"
+    },
+    "final_step": {
+      "cuda_max_allocated_bytes": 3126338048,
+      "cuda_max_reserved_bytes": 3168796672,
+      "data_metrics": {},
+      "global_step": 2,
+      "grad_norm": 17.0,
+      "learning_rate": 0.0005,
+      "loss": 4.7937469482421875,
+      "loss_terms": {
+        "position_weighted_ce": 4.793746805982666
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "effective_token_weight": 2.211538553237915,
+        "supervised_tokens": 11.0
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "7764766045da6cf1faa9f8f22ad392a80a5a00560a88549420f12c23a408fffc",
+          "before_sha256": "ee6bc0c9a3c30b6e7c9d0d4792af2a8bd73e42f4176e083c89e52d5c6cb72aaf",
+          "changed_sampled_elements": 4356,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 0.998925507068634,
+          "max_abs_sampled_update": 0.0006103515625,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  }
+}

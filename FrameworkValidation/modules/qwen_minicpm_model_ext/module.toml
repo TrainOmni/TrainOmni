@@ -1,0 +1,4 @@
+[module]
+id = "model:validation/qwen35_vision_minicpm5_ext@2"
+entrypoint = "module:descriptor"
+api_version = 1

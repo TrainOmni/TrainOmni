@@ -1,0 +1,13 @@
+{
+  "samples": {
+    "dpo-0001": {
+      "file": "dpo-0001.safetensors",
+      "sha256": "f43958366676a957f2ea19cde5dc51a12de2a8a39e632783a62d585621841ae8",
+      "tensors": {
+        "chosen_reference_logps": "chosen_reference_logps",
+        "rejected_reference_logps": "rejected_reference_logps"
+      }
+    }
+  },
+  "schema_version": 1
+}

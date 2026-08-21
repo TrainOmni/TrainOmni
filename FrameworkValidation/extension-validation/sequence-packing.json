@@ -1,0 +1,145 @@
+{
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "packed_loss": 7.950959777832031
+    },
+    "samples": 1
+  },
+  "inspection": {
+    "capabilities": [
+      "batch.labels",
+      "batch.omni",
+      "batch.packed_attention",
+      "batch.segment_ids",
+      "data.encoded",
+      "data.packed",
+      "data.sample.omni",
+      "data.source.stateful",
+      "data.supervised",
+      "evaluation.loss",
+      "fusion.sequence_length_preserving",
+      "model.attention.packed",
+      "model.attention.semantic",
+      "model.monolithic",
+      "model.output.logits",
+      "model.parameters",
+      "objective.causal_lm",
+      "objective.loss_bundle",
+      "parameters.component"
+    ],
+    "cross_segment_attention_entries": 0,
+    "incompatible_attention_fail_closed": "train-data:packer:trainomni/sequence@1 requires missing capabilities: model.attention.packed",
+    "packed_lengths": [
+      19,
+      20
+    ],
+    "sample_ids": [
+      "pack:1f007ef46eb8398de4e5"
+    ],
+    "second_segment_boundary_label": -100,
+    "segment_ids": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "task_digest": "cea764f4145ebfa30acd4299368ede2ecb21e46ca31100555b0e6d7f83c61051",
+    "valid_tokens": 39
+  },
+  "retention": {
+    "durable_receipt_contains_model_digest": true,
+    "large_temporary_checkpoint_removed_after_receipt": true
+  },
+  "route": "sequence-packing",
+  "schema_version": 1,
+  "task": "D:\\Codex\\TrainOmni\\FrameworkValidation\\extension-packing.task.json",
+  "training": {
+    "checkpoint": {
+      "global_step": 2,
+      "model_sha256": "aad0c4b686a371dfa63d5b6ff47975a908d94f4143ff56cb253bd3ddbc59de91",
+      "run_digest": "a1aa769fcb26836f75fc6a8628f718a61bf657cd428c02c8eb64c2abed034f78",
+      "task_digest": "cea764f4145ebfa30acd4299368ede2ecb21e46ca31100555b0e6d7f83c61051"
+    },
+    "engine": {
+      "attention_kernel": "eager",
+      "attention_kernel_modules": [
+        "<root>"
+      ],
+      "device": "cuda:0",
+      "precision": "bf16_true"
+    },
+    "final_step": {
+      "cuda_max_allocated_bytes": 4225608704,
+      "cuda_max_reserved_bytes": 4374659072,
+      "data_metrics": {},
+      "global_step": 2,
+      "grad_norm": 6.84375,
+      "learning_rate": 0.0005,
+      "loss": 8.225748062133789,
+      "loss_terms": {
+        "token_ce": 8.225747680664062
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "supervised_tokens": 10.0
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "fdf100904c908d94db5031a8c4adc70da263d8dc5d540f45f1be5f6a63b99251",
+          "before_sha256": "30362c16aedb23bf17757a11e1dc3932379db4809971025071bdeaa2be13167d",
+          "changed_sampled_elements": 4441,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 1.0038607120513916,
+          "max_abs_sampled_update": 0.0006103515625,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  }
+}

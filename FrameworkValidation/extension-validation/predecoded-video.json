@@ -1,0 +1,111 @@
+{
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "video_frame_loss": 6.212862881747159
+    },
+    "samples": 1
+  },
+  "inspection": {
+    "capabilities": [
+      "attention.semantic.model_default",
+      "batch.labels",
+      "batch.omni",
+      "data.encoded",
+      "data.packed",
+      "data.sample.omni",
+      "data.source.stateful",
+      "data.supervised",
+      "evaluation.loss",
+      "fusion.sequence_length_preserving",
+      "model.attention.semantic",
+      "model.monolithic",
+      "model.output.logits",
+      "model.parameters",
+      "objective.causal_lm",
+      "objective.loss_bundle",
+      "parameters.component"
+    ],
+    "encoded_grid_rows": 3,
+    "frame_count": 3,
+    "image_grid_thw": [
+      [
+        1,
+        22,
+        44
+      ],
+      [
+        1,
+        20,
+        14
+      ],
+      [
+        1,
+        32,
+        32
+      ]
+    ],
+    "sample_ids": [
+      "video-frames-0001"
+    ],
+    "task_digest": "a12c3b2e5a3737f93289da4d1513012b7a8571be4e9d052cc033b1384ee97317"
+  },
+  "retention": {
+    "durable_receipt_contains_model_digest": true,
+    "large_temporary_checkpoint_removed_after_receipt": true
+  },
+  "route": "predecoded-video",
+  "schema_version": 1,
+  "task": "D:\\Codex\\TrainOmni\\FrameworkValidation\\extension-video.task.json",
+  "training": {
+    "checkpoint": {
+      "global_step": 2,
+      "model_sha256": "aad93247d6e85ae44549868f561aed64f7d2b9a66b4b31fd13f84c164b50a0de",
+      "run_digest": "63508c28ed9dfa3c3bff52b1e4fc1d018b668afca4ce5da371686d2681c909a6",
+      "task_digest": "a12c3b2e5a3737f93289da4d1513012b7a8571be4e9d052cc033b1384ee97317"
+    },
+    "engine": {
+      "attention_kernel": "auto",
+      "attention_kernel_modules": [],
+      "device": "cuda:0",
+      "precision": "bf16_true"
+    },
+    "final_step": {
+      "cuda_max_allocated_bytes": 4328542208,
+      "cuda_max_reserved_bytes": 4483710976,
+      "data_metrics": {},
+      "global_step": 2,
+      "grad_norm": 21.0,
+      "learning_rate": 0.0005,
+      "loss": 7.543658256530762,
+      "loss_terms": {
+        "token_ce": 7.543658169833097
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "supervised_tokens": 11.0
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "8726760d092a1278e2a7156e19d0330518d7489d64e858ad8402e33d84d35ebd",
+          "before_sha256": "d9bdcac50efd20c1519bb0be2c54fa9ea8b1a0b0adee153a7c749cfaf7fc65ec",
+          "changed_sampled_elements": 4430,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 1.0034947395324707,
+          "max_abs_sampled_update": 0.0006103515625,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  }
+}

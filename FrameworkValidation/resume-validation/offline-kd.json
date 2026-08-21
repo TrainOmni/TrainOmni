@@ -1,0 +1,132 @@
+{
+  "comparison": {
+    "checkpoint_logical_state_equal": true,
+    "container_file_digests_compared": false,
+    "final_step_evidence_equal": true,
+    "fresh_process": true,
+    "resumed_steps": 4,
+    "split_steps": 2,
+    "uninterrupted_steps": 4
+  },
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "kd_ce": 5.055662790934245,
+      "kd_kl": 0.12257750829060872
+    },
+    "samples": 1
+  },
+  "retention": {
+    "container_files_may_serialize_equal_state_differently": true,
+    "durable_checkpoint_digests_retained": true,
+    "large_temporary_checkpoints_removed": true
+  },
+  "route": "offline-kd",
+  "schema_version": 1,
+  "state": {
+    "checkpoint": {
+      "global_step": 4,
+      "logical_model_sha256": "75b6b77fc0219e56bc08f307cfdc8077f7dd30ea63d573661dfc5e48cbb17100",
+      "logical_optimizer_sha256": "a4b1da1c2c55edc134d5780beea6e1e735b28f243ac311b6a178e2ce1021d7dc",
+      "runtime_metadata": {
+        "optimizer": {
+          "betas": [
+            0.9,
+            0.999
+          ],
+          "eps": 1e-08,
+          "foreach": false,
+          "groups": [
+            {
+              "name": "connector",
+              "parameter_count": 4,
+              "state_dtypes": [
+                "torch.bfloat16",
+                "torch.float32"
+              ],
+              "state_tensor_count": 12
+            }
+          ],
+          "name": "adamw",
+          "quantized": false,
+          "torch_version": "2.13.0+cu130",
+          "type": "torch.optim.adamw.AdamW"
+        },
+        "parameter_evidence": {
+          "connector": {
+            "after_sha256": "fb9bb24e2dede74c11214c9b0d0db6b75efc91a409373f6ec9c5b83b72a054dc",
+            "before_sha256": "122649f5b984326f72855c80f6641316bf9a87196b8f02da1812bf90f7da2267",
+            "changed_sampled_elements": 3367,
+            "changed_tensor_count": 3,
+            "changed_tensors": [
+              "connector.0.bias",
+              "connector.1.weight",
+              "connector.1.bias"
+            ],
+            "gradient_norm": 0.9979082942008972,
+            "max_abs_sampled_update": 0.000244140625,
+            "parameter_count": 4,
+            "parameter_dtypes": [
+              "torch.bfloat16"
+            ],
+            "parameter_numel": 1576448,
+            "sampled_elements": 5632
+          }
+        }
+      },
+      "runtime_sha256": "85656f1ad7dc24dbe2dc99c09edf7e309098b08fdafeaff0345d9c8c2cf6349a"
+    },
+    "container_digests": {
+      "model_sha256": "729e25526711e1b83224c22178e1b813a7c10a98126872a159a69eec731922b7",
+      "optimizer_sha256": "f5747db0a624ba0cd8b65a3b3868bbd782c435b6163eb5ad09c9d8e948ec7ae0"
+    },
+    "final_step": {
+      "data_metrics": {},
+      "global_step": 4,
+      "grad_norm": 92.0,
+      "learning_rate": 0.00016250000000000002,
+      "loss": 3.1099953651428223,
+      "loss_terms": {
+        "dense_kl": 0.17442880736456978,
+        "token_ce": 5.522275288899739
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "supervised_tokens": 9.0
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "fb9bb24e2dede74c11214c9b0d0db6b75efc91a409373f6ec9c5b83b72a054dc",
+          "before_sha256": "122649f5b984326f72855c80f6641316bf9a87196b8f02da1812bf90f7da2267",
+          "changed_sampled_elements": 3367,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 0.9979082942008972,
+          "max_abs_sampled_update": 0.000244140625,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  },
+  "workers": {
+    "resume": {
+      "final_step": 4,
+      "steps_executed": 2
+    },
+    "split": {
+      "final_step": 2
+    },
+    "uninterrupted": {
+      "final_step": 4
+    }
+  }
+}

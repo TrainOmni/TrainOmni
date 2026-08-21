@@ -1,0 +1,144 @@
+{
+  "comparison": {
+    "checkpoint_logical_state_equal": true,
+    "container_file_digests_compared": false,
+    "final_step_evidence_equal": true,
+    "fresh_process": true,
+    "resumed_steps": 4,
+    "split_steps": 2,
+    "uninterrupted_steps": 4
+  },
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "dpo_loss": 0.004061107989400625
+    },
+    "samples": 1
+  },
+  "retention": {
+    "container_files_may_serialize_equal_state_differently": true,
+    "durable_checkpoint_digests_retained": true,
+    "large_temporary_checkpoints_removed": true
+  },
+  "route": "offline-dpo",
+  "schema_version": 1,
+  "state": {
+    "checkpoint": {
+      "global_step": 4,
+      "logical_model_sha256": "9aa4705a506666a2c7c05745c4eb4682388caed53221b6dbfe95d46df3a8c473",
+      "logical_optimizer_sha256": "bf07ecf808e6328541ed8a52fa488d5bbc1cdc5cf433cdeb27f87761b540c1c0",
+      "runtime_metadata": {
+        "optimizer": {
+          "betas": [
+            0.9,
+            0.999
+          ],
+          "eps": 1e-08,
+          "foreach": false,
+          "groups": [
+            {
+              "name": "connector",
+              "parameter_count": 4,
+              "state_dtypes": [
+                "torch.bfloat16",
+                "torch.float32"
+              ],
+              "state_tensor_count": 12
+            }
+          ],
+          "name": "adamw",
+          "quantized": false,
+          "torch_version": "2.13.0+cu130",
+          "type": "torch.optim.adamw.AdamW"
+        },
+        "parameter_evidence": {
+          "connector": {
+            "after_sha256": "cac7aceae9670d0dddf2080dded8feb206b6b2ecd4b73f7005d14179d3a9af43",
+            "before_sha256": "64fb4c5de8553a5e3aae6d50db00e41542948683e44ae98137af32ea3a01174f",
+            "changed_sampled_elements": 3547,
+            "changed_tensor_count": 3,
+            "changed_tensors": [
+              "connector.0.bias",
+              "connector.1.weight",
+              "connector.1.bias"
+            ],
+            "gradient_norm": 1.000749945640564,
+            "max_abs_sampled_update": 0.000244140625,
+            "parameter_count": 4,
+            "parameter_dtypes": [
+              "torch.bfloat16"
+            ],
+            "parameter_numel": 1576448,
+            "sampled_elements": 5632
+          }
+        }
+      },
+      "runtime_sha256": "8da578111c8edc54777a9751d09e7c6c55d7d550e241c1c63b589901d883e7c0"
+    },
+    "container_digests": {
+      "model_sha256": "4bc0d028cae40436555704808391b0c2cc541c54aa62f5d5040aa74566a31158",
+      "optimizer_sha256": "b265bf911f295e39937f9b3d61123f698563fcb0b0df4977eaabaf2277ab42f0"
+    },
+    "final_step": {
+      "data_metrics": {},
+      "global_step": 4,
+      "grad_norm": 3.15625,
+      "learning_rate": 0.00016250000000000002,
+      "loss": 0.02983231097459793,
+      "loss_terms": {
+        "dpo": 0.02983231097459793
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "accuracy": 1.0,
+        "chosen_policy_logp": -90.17021942138672,
+        "chosen_reference_logp": -123.59410858154297,
+        "chosen_reward": 3.342388868331909,
+        "chosen_tokens": 12.0,
+        "delta": 34.97209930419922,
+        "dpo_logit": 3.4972100257873535,
+        "policy_ratio": 13.954330444335938,
+        "preference_pairs": 1.0,
+        "reference_ratio": -21.01776885986328,
+        "rejected_policy_logp": -104.12454986572266,
+        "rejected_reference_logp": -102.57633972167969,
+        "rejected_reward": -0.1548210233449936,
+        "rejected_tokens": 11.0,
+        "reward_margin": 3.4972097873687744
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "cac7aceae9670d0dddf2080dded8feb206b6b2ecd4b73f7005d14179d3a9af43",
+          "before_sha256": "64fb4c5de8553a5e3aae6d50db00e41542948683e44ae98137af32ea3a01174f",
+          "changed_sampled_elements": 3547,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 1.000749945640564,
+          "max_abs_sampled_update": 0.000244140625,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  },
+  "workers": {
+    "resume": {
+      "final_step": 4,
+      "steps_executed": 2
+    },
+    "split": {
+      "final_step": 2
+    },
+    "uninterrupted": {
+      "final_step": 4
+    }
+  }
+}

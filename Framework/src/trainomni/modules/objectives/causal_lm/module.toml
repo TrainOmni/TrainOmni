@@ -1,0 +1,7 @@
+api_version = 1
+kind = "objective"
+namespace = "trainomni"
+name = "causal_lm"
+version = "1"
+config = "config:CausalLMConfig"
+entrypoint = "module:CausalLMObjective"

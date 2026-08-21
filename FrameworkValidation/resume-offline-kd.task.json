@@ -1,0 +1,159 @@
+{
+  "data": {
+    "collator": {
+      "config": {
+        "field_modes": {
+          "image_counts": "concat",
+          "image_grid_thw": "concat",
+          "pixel_values": "concat"
+        },
+        "pad_token_id": 0
+      },
+      "module": "collator:trainomni/multimodal@1"
+    },
+    "model_io": {
+      "config": {
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "max_text_tokens": 96,
+        "mode": "dense_kd",
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+      },
+      "module": "model_io:validation/qwen35_vision_minicpm5@1"
+    },
+    "packer": {
+      "module": "packer:trainomni/none@1"
+    },
+    "source": {
+      "config": {
+        "path": "data/kd.jsonl",
+        "repeat": true,
+        "sha256": "3d7c520b6e96f2798b1797251f8eb28015852ef836a7ee606e53382f116e054a"
+      },
+      "module": "data_source:trainomni/jsonl@1"
+    },
+    "supervision": {
+      "module": "supervision:trainomni/dense_kd@1"
+    },
+    "transforms": [
+      {
+        "config": {
+          "index_path": "cache/kd/index.json",
+          "index_sha256": "43f036cbcc03c4ae2fecaf8f18e9f92045616e19d5c60b2ab3c69951f968cb4c"
+        },
+        "module": "sample_transform:trainomni/tensor_cache@1"
+      }
+    ]
+  },
+  "evaluation": {
+    "data": {
+      "collator": {
+        "config": {
+          "field_modes": {
+            "image_counts": "concat",
+            "image_grid_thw": "concat",
+            "pixel_values": "concat"
+          },
+          "pad_token_id": 0
+        },
+        "module": "collator:trainomni/multimodal@1"
+      },
+      "model_io": {
+        "config": {
+          "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+          "max_text_tokens": 96,
+          "mode": "dense_kd",
+          "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+        },
+        "module": "model_io:validation/qwen35_vision_minicpm5@1"
+      },
+      "packer": {
+        "module": "packer:trainomni/none@1"
+      },
+      "source": {
+        "config": {
+          "path": "data/kd.jsonl",
+          "repeat": true,
+          "sha256": "3d7c520b6e96f2798b1797251f8eb28015852ef836a7ee606e53382f116e054a"
+        },
+        "module": "data_source:trainomni/jsonl@1"
+      },
+      "supervision": {
+        "module": "supervision:trainomni/dense_kd@1"
+      },
+      "transforms": [
+        {
+          "config": {
+            "index_path": "cache/kd/index.json",
+            "index_sha256": "43f036cbcc03c4ae2fecaf8f18e9f92045616e19d5c60b2ab3c69951f968cb4c"
+          },
+          "module": "sample_transform:trainomni/tensor_cache@1"
+        }
+      ]
+    },
+    "evaluators": [
+      {
+        "config": {
+          "metric_name": "kd_ce",
+          "term": "token_ce"
+        },
+        "module": "evaluator:trainomni/loss@1"
+      },
+      {
+        "config": {
+          "metric_name": "kd_kl",
+          "term": "dense_kl"
+        },
+        "module": "evaluator:trainomni/loss@1"
+      }
+    ]
+  },
+  "exporters": [
+    {
+      "module": "exporter:trainomni/safetensors@1"
+    }
+  ],
+  "local_modules": [
+    {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_model",
+      "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"
+    },
+    {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_io",
+      "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"
+    }
+  ],
+  "model": {
+    "components": {},
+    "implementation": {
+      "config": {
+        "initial_artifact": "D:\\Codex\\TrainOmni\\FrameworkValidation\\artifacts\\stage-04-kd",
+        "initial_artifact_sha256": "b76286a5eabdc8ec88e70d4a1267f458531d65b97635da211157abf1a4ac5a98",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "load_dtype": "bf16",
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+      },
+      "module": "model:validation/qwen35_vision_minicpm5@1"
+    }
+  },
+  "name": "real-vlm-exact-resume-offline-kd",
+  "objective": {
+    "config": {
+      "ce_weight": 0.5,
+      "kd_weight": 0.5,
+      "temperature": 2.0
+    },
+    "module": "objective:trainomni/dense_kd@1"
+  },
+  "parameters": {
+    "config": {
+      "group_per_component": true,
+      "train": [
+        "connector"
+      ]
+    },
+    "module": "parameter_policy:trainomni/component@1"
+  },
+  "schema_version": 1
+}

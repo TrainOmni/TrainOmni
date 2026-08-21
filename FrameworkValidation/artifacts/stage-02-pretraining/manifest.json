@@ -1,0 +1,17 @@
+{
+  "file": "model.safetensors",
+  "identity": {
+    "checkpoint_global_step": "2",
+    "checkpoint_manifest_sha256": "41d43efddb7c556eb81e21d9f8b2957cf6f87570176aa00d1dd20407c3ac2fd5",
+    "checkpoint_model_sha256": "49f3ed1e059481cdbfcebbfb1b0b9132b5d7684c66e2b7e6b1e03421a8e06bbd",
+    "exporter": "exporter:trainomni/safetensors@1",
+    "module_lock_digest": "ec90496663a9605b91071947f354a4b4f8488b73b27dd0b9ceadded8f0b690d4",
+    "run_digest": "48a8b16fec13cca906913fec62c11f15340b7b24b924164ed7156c2c47abb327",
+    "task_digest": "7937680a304436a444107cce99a9719ec4906d2732d6e7d375842568625c765c"
+  },
+  "kind": "safetensors",
+  "schema_version": 1,
+  "sha256": "9ff76111e1604a2fd9aca1291c2ee99b18800c63c93664c864caa1f98908341a",
+  "state_key_count": 376,
+  "tensor_count": 376
+}

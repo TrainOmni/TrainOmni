@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "name": "real-vlm-stage-03-supervised-finetuning",
+  "local_modules": [
+    {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_model",
+      "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"
+    },
+    {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_io",
+      "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"
+    }
+  ],
+  "data": {
+    "source": {
+      "module": "data_source:trainomni/jsonl@1",
+      "config": {
+        "path": "data/sft.jsonl",
+        "sha256": "27b20665edaa859f98b9357553d3be081605246d9d1491ebcd87b8ffd7d1d7a5",
+        "repeat": true
+      }
+    },
+    "transforms": [],
+    "model_io": {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "config": {
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "mode": "sft",
+        "max_text_tokens": 96
+      }
+    },
+    "supervision": {"module": "supervision:trainomni/causal_lm@1"},
+    "packer": {"module": "packer:trainomni/none@1"},
+    "collator": {
+      "module": "collator:trainomni/multimodal@1",
+      "config": {
+        "pad_token_id": 0,
+        "field_modes": {
+          "pixel_values": "concat",
+          "image_grid_thw": "concat",
+          "image_counts": "concat"
+        }
+      }
+    }
+  },
+  "model": {
+    "implementation": {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "config": {
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "load_dtype": "bf16",
+        "initial_artifact": "D:/Codex/TrainOmni/FrameworkValidation/artifacts/stage-02-pretraining",
+        "initial_artifact_sha256": "9ff76111e1604a2fd9aca1291c2ee99b18800c63c93664c864caa1f98908341a"
+      }
+    },
+    "components": {}
+  },
+  "objective": {"module": "objective:trainomni/causal_lm@1"},
+  "parameters": {
+    "module": "parameter_policy:trainomni/full@1",
+    "config": {"group_by_top_level_component": true}
+  },
+  "evaluation": {
+    "data": {
+      "source": {
+        "module": "data_source:trainomni/jsonl@1",
+        "config": {
+          "path": "data/sft.jsonl",
+          "sha256": "27b20665edaa859f98b9357553d3be081605246d9d1491ebcd87b8ffd7d1d7a5",
+          "repeat": true
+        }
+      },
+      "transforms": [],
+      "model_io": {
+        "module": "model_io:validation/qwen35_vision_minicpm5@1",
+        "config": {
+          "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+          "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+          "mode": "sft",
+          "max_text_tokens": 96
+        }
+      },
+      "supervision": {"module": "supervision:trainomni/causal_lm@1"},
+      "packer": {"module": "packer:trainomni/none@1"},
+      "collator": {
+        "module": "collator:trainomni/multimodal@1",
+        "config": {
+          "pad_token_id": 0,
+          "field_modes": {
+            "pixel_values": "concat",
+            "image_grid_thw": "concat",
+            "image_counts": "concat"
+          }
+        }
+      }
+    },
+    "evaluators": [
+      {
+        "module": "evaluator:trainomni/loss@1",
+        "config": {"term": "token_ce", "metric_name": "sft_loss"}
+      }
+    ]
+  },
+  "exporters": [{"module": "exporter:trainomni/safetensors@1"}]
+}
+

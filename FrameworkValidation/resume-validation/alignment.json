@@ -1,0 +1,130 @@
+{
+  "comparison": {
+    "checkpoint_logical_state_equal": true,
+    "container_file_digests_compared": false,
+    "final_step_evidence_equal": true,
+    "fresh_process": true,
+    "resumed_steps": 4,
+    "split_steps": 2,
+    "uninterrupted_steps": 4
+  },
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "alignment_loss": 2.81367319280451
+    },
+    "samples": 1
+  },
+  "retention": {
+    "container_files_may_serialize_equal_state_differently": true,
+    "durable_checkpoint_digests_retained": true,
+    "large_temporary_checkpoints_removed": true
+  },
+  "route": "alignment",
+  "schema_version": 1,
+  "state": {
+    "checkpoint": {
+      "global_step": 4,
+      "logical_model_sha256": "6a68298de05b905a2704395c3b90ba2019323cb2c725a86fc791246e1b4b52f2",
+      "logical_optimizer_sha256": "ab50cf938318ef23ed3d7889b84099bf798b9001d47cf97f14d54c6d1e3d7ae6",
+      "runtime_metadata": {
+        "optimizer": {
+          "betas": [
+            0.9,
+            0.999
+          ],
+          "eps": 1e-08,
+          "foreach": false,
+          "groups": [
+            {
+              "name": "connector",
+              "parameter_count": 4,
+              "state_dtypes": [
+                "torch.bfloat16",
+                "torch.float32"
+              ],
+              "state_tensor_count": 12
+            }
+          ],
+          "name": "adamw",
+          "quantized": false,
+          "torch_version": "2.13.0+cu130",
+          "type": "torch.optim.adamw.AdamW"
+        },
+        "parameter_evidence": {
+          "connector": {
+            "after_sha256": "2667b0fc679381d263f9a5b1346c19aaba29982573378eca0eb4b4dd85a5ace8",
+            "before_sha256": "3b77a674e823b3d9e23ad2fb913a30575694274da97e63151ef96a5eda10b874",
+            "changed_sampled_elements": 3993,
+            "changed_tensor_count": 3,
+            "changed_tensors": [
+              "connector.0.bias",
+              "connector.1.weight",
+              "connector.1.bias"
+            ],
+            "gradient_norm": 1.0045210123062134,
+            "max_abs_sampled_update": 0.0003662109375,
+            "parameter_count": 4,
+            "parameter_dtypes": [
+              "torch.bfloat16"
+            ],
+            "parameter_numel": 1576448,
+            "sampled_elements": 5632
+          }
+        }
+      },
+      "runtime_sha256": "6fa1b1179cede7ff7d979f47b3e787fd9dfd7374f274bbb3da0009f20d6dd3e1"
+    },
+    "container_digests": {
+      "model_sha256": "c7dea4bd3f60344d39d6f3d010f2d7039efafaa191fa87dffb4d31141f05c8f4",
+      "optimizer_sha256": "88b8b628d2c34b0e4f61165b376b964cc5e0f35aeb2840d883c01ce551c1a8e3"
+    },
+    "final_step": {
+      "data_metrics": {},
+      "global_step": 4,
+      "grad_norm": 8.375,
+      "learning_rate": 0.00032500000000000004,
+      "loss": 3.3285443782806396,
+      "loss_terms": {
+        "token_ce": 3.32854429880778
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "supervised_tokens": 12.0
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "2667b0fc679381d263f9a5b1346c19aaba29982573378eca0eb4b4dd85a5ace8",
+          "before_sha256": "3b77a674e823b3d9e23ad2fb913a30575694274da97e63151ef96a5eda10b874",
+          "changed_sampled_elements": 3993,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 1.0045210123062134,
+          "max_abs_sampled_update": 0.0003662109375,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  },
+  "workers": {
+    "resume": {
+      "final_step": 4,
+      "steps_executed": 2
+    },
+    "split": {
+      "final_step": 2
+    },
+    "uninterrupted": {
+      "final_step": 4
+    }
+  }
+}

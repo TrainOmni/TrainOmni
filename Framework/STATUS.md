@@ -1,82 +1,85 @@
-# Framework Task Status
+# Status
 
-- Role: `framework`
-- Owned path: `D:\Codex\TrainOmni\Framework`
-- Updated: 2026-08-21
-- State: TrainOmni v1 implemented and verified; VLM-first, with audio understanding and generation intentionally later
+TrainOmni Framework replacement v0.1.0 is basically complete for the
+single-process multimodal-understanding scope. The rejected pre-redesign code is
+archive-only and is not a second active implementation.
 
-## Completion summary
+## Completed scope
 
-| Area | State | Evidence |
-|---|---|---|
-| SOTA/open-source research | Complete | `docs/research/` |
-| Lifecycle, requirements, architecture | Complete v1 | `docs/design/` |
-| Canonical multimodal protocol | Implemented | `src/trainomni/data/model.py`, schema and fixtures |
-| Reader/importer extensibility | Implemented | JSON/JSONL/Parquet/TAR + explicit data plugins |
-| Stateful mixture/batching | Implemented | exact cursor/RNG/look-ahead and distributed grouping |
-| Model registration | Implemented | external plugin, manifest, capabilities, exact component cover |
-| Objective layer | Implemented | masked causal LM + native cached KD/offline-reference DPO + delegated broader post-training contracts |
-| Native execution | Implemented | PyTorch single/DDP/FSDP2 loop |
-| PEFT/precision/optimization | Implemented | LoRA/QLoRA, AMP/TF32, explicit optimizer identity, AdamW/optional AdamW8bit, component diagnostics |
-| Checkpoint/resume | Implemented | local atomic + DCP; exact runtime state; model-only reshard/export |
-| Pipeline/gates/lineage | Implemented | durable DAG executor and artifact URIs |
-| Delegated backends | Implemented | pinned VeOmni bridge + secure TRL/NeMo/veRL/custom command adapters |
-| Evaluation/export | Implemented | normalized loss, external evaluator, HF/plugin export |
-| CLI/provenance/logging | Implemented | validate/inspect/plan/train/run/evaluate/export |
-| Public real VLM smoke | Passed | `examples/plugins/tiny_llava.py` |
-| Automated tests | 80/80 passed | optional-runtime suite; torch/PEFT/pyarrow tests skip cleanly without their extras |
-| Distributed verification | Passed | 2-process CPU DDP and FSDP2+DCP exact resume |
-| Ascend multi-node | Deferred by explicit user decision | no implementation claim |
+- Framework, task, run, output and platform-launch boundaries are separate.
+- Typed module registry/resolver, strict TaskSpec/RunSpec, capability preflight and
+  SHA-pinned task-local extensions are executable.
+- Flat/chat multimodal samples, media identity, image/video transforms,
+  safetensors sidecar cache, Transformers ModelIO, supervision, collation and
+  resumable sequence packing are implemented.
+- Named child data sources and deterministic weighted mixture sampling preserve
+  every child cursor, selection cursor and per-source count across exact resume.
+- Monolithic and ordered multi-branch composite models support vision/video
+  encoders, connectors, prefix/token-replace/cross-attention fusion and independent
+  semantic/runtime attention selection.
+- Causal LM, offline dense-logit KD and offline-reference DPO use one Objective ABI
+  and one training engine.
+- Full/component/freeze/native Linear-LoRA policies, AdamW groups, schedulers,
+  accumulation, clipping, precision, activation checkpointing and optional
+  `torch.compile` are implemented.
+- Split atomic checkpointing records model/optimizer/runtime identities and state;
+  exact resume, model-only load, held-out evaluation and structured resource/update
+  evidence are implemented.
+- Generic safetensors, Transformers `save_pretrained` and strict native LoRA
+  adapter export/load paths are implemented.
+- Windows and Linux single-process launch scripts are isolated from Python task/run
+  semantics and require an explicit interpreter.
 
-## Accepted decisions
+## Verification evidence
 
-1. TrainOmni selectively self-builds stable semantics/control-plane boundaries and reuses open-source kernels/runtimes.
-2. PyTorch + Transformers is the native CPT/SFT execution ABI; FSDP2 + DCP is the sharded scale path.
-3. RL/agentic orchestration is a delegated Stage, not forced into a fake batch loss loop.
-4. New models and data formats require explicit external plugins and normally zero core edits.
-5. Exact resume is a protocol property and includes data/mixture/batch/RNG state, not only model weights.
-6. Local exact checkpoints contain pickle state and therefore require explicit trust flags; DCP model-only loading does not deserialize the rank-local runtime pickle.
-7. TrainOmni is VLM-first: audio understanding is the next modality priority, while diffusion/generative training is deferred.
-8. VeOmni is the preferred future scale/Ascend engine; the native torch engine remains the local correctness oracle.
+- Full source suite: **90 passed, 1 skipped**. The only skip is the POSIX launcher
+  execution test on the current Windows host.
+- Ruff: clean across `src/trainomni` and `tests`.
+- Python compileall: passed with bytecode directed outside Framework.
+- Wheel: `trainomni-0.1.0-py3-none-any.whl` built successfully; SHA-256
+  `1e54bd8179000300e1f73b2efaba918e081f66969993c7a13f37e9055da7e168`.
+- Isolated wheel import/CLI: version `0.1.0`; the current source catalog has 38
+  builtin descriptors and CLI help passes.
+- Installed-wheel lifecycle subset: **8 passed**, covering composite exact resume,
+  monolithic train/eval/export, KD/DPO shared engine and fresh-process Transformers
+  artifact reload.
+- Project-local Windows interpreter: `Framework/.venv/Scripts/python.exe`, Python
+  3.12.13, Torch 2.13.0+cu130. It resolves CUDA 13.0 on an RTX 4060 Ti (compute 8.9),
+  and a true-BF16 forward/backward plus AdamW update passed on `cuda:0`.
+- The full source suite was rerun from that interpreter with user site packages
+  disabled: **88 passed, 1 skipped**; Ruff and `pip check` are clean.
+- Tiny composite true-BF16 CUDA train/checkpoint/fresh-process exact resume/evaluate/
+  export passed with weighted multi-source data. Tiny monolithic CUDA train/resume/
+  evaluate/export also passed. Both record nonzero allocated/reserved GPU memory.
+- A real Qwen3.5 vision + MiniCPM5-1B chain ran connector alignment → multimodal
+  pretraining → full-parameter SFT → offline dense-logit KD → offline-reference
+  DPO on the RTX 4060 Ti. Every stage completed train/checkpoint/evaluate/export,
+  component update evidence is nonzero, the final artifact strictly reloads and a
+  fresh post-reload multimodal forward is finite. See
+  `docs/verification/real-vlm-five-stage-20260821.md`.
+- Real native Linear-LoRA SFT and offline-reference DPO train/evaluate/export
+  passed across 219 vision/connector/LLM targets. Strict adapter reload is
+  bit-identical to checkpoint logits. A real batch-size-2 run also passed unequal
+  text lengths, one/two images per sample, unequal image grids and two-way
+  gradient accumulation.
+- Real fresh-process exact resume passed independently for full-parameter SFT,
+  multimodal pretraining, connector alignment, offline dense-logit KD and
+  offline-reference DPO. Named model tensors, logical AdamW state, runtime state,
+  final metrics and update evidence match the corresponding uninterrupted run.
+- Real extension-route gates passed for a SHA-pinned task-local Objective,
+  independent eager/SDPA runtime attention selection, two-source weighted data
+  mixture, multimodal block-diagonal sequence packing and ordered video-frame
+  input. All six routes completed BF16 CUDA train/checkpoint/evaluate with actual
+  connector updates. See
+  `docs/verification/real-vlm-extension-routes-20260821.md`.
 
-## Verified boundaries
+## Explicitly outside v0.1.0
 
-- Public tiny LLaVA: real processor, image encode, assistant-only loss mask, forward/backward, two checkpoints, exact resume tensor equality, loss evaluation, HF safe export.
-- Native evaluation: primary/auxiliary models and nested batch tensors follow `stage.engine.config.device`; configured precision uses the shared torch autocast/TF32 policy under `eval()` + `inference_mode()`.
-- Single-process torch toy: automated train/resume/eval/export test.
-- Full-parameter P1 contract: BF16 AdamW `foreach=false`, optimizer/version/state-dtype metadata, full registry exact resume, trainable-numel gate, component finite-gradient plus exact bitwise full-parameter update evidence, strict activation-checkpoint receipts, and no-fallback AdamW8bit failure path.
-- Offline dense-logit KD: native torch full-vocab BF16 cache consumer, FP32 CE plus `T² KL(teacher||student)`, immutable teacher/student/model/tokenizer/processor/data/position lineage, fail-closed preflight and exact-resume objective identity.
-- Offline-reference DPO: native torch paired policy forwards, FP32 cached reference token log-probs, original sigmoid DPO, strict preference/pair/prompt/media/branch lineage, objective counters and exact resume.
-- DDP: deterministic global batch grouping, per-rank exact checkpoint, two-process uninterrupted/resume tensor equality on both ranks.
-- FSDP2: `fully_shard`, DCP model/optimizer, rank-local runtime sidecars, exact resume, single-process model-only DCP reshard/export equality.
-- Delegated GRPO: explicit command authorization, redacted request manifest, metrics/output collection, no core model build.
-- VeOmni bridge: immutable backend revision, versioned request/result contract, VLM-only capability matrix, and explicit refusal to claim exact resume before conformance.
-- Two-stage torch Pipeline: physical checkpoint URI loading, lineage reconstruction and idempotent same-executor resume.
-- Plugin security: YAML never auto-imports Python; model/data code requires explicit CLI trust.
+- Performance and quality characterization beyond the completed engineering gates.
+- DDP, FSDP2, distributed launch/checkpoint, Ascend/HCCL and multi-host execution.
+- QLoRA/quantized optimizers, tensor/pipeline/context parallelism.
+- Audio understanding encoder and diffusion/generative-media training.
 
-## Known limitations (not hidden completion gaps)
-
-- Native torch engine covers standard CPT/SFT-style loops plus bounded offline cached dense-logit KD and offline-reference DPO contracts. TP/PP/CP, live/large-scale distillation/DPO and online/agentic RL execute through delegated backend adapters.
-- FSDP2 exact runtime resume currently requires the same world size because rank-local data/RNG state is topology-specific. Model-only DCP can reshard to a different topology.
-- Built-in TAR reader consumes JSON members; media-in-tar extraction policies belong in a data plugin.
-- Real video/audio decode and model chat/processor semantics belong in model/data plugins; canonical contracts already represent them.
-- LoRA/QLoRA code paths require optional PEFT and, for QLoRA, a plugin-loaded quantized model.
-- AdamW8bit is an explicit optional bitsandbytes CUDA path. Windows is upstream-supported, but real target-GPU uninterrupted/resume conformance is required before claiming it for P1; core never silently falls back.
-- Ascend/昇腾 has not been implemented in this version, per user direction.
-- Audio is representable in the canonical contract, but no audio-encoder conformance plugin is claimed yet.
-- Diffusion/continuous generative objectives are intentionally outside the current VLM-first implementation.
-
-## Handoff anchors
-
-- `README.md`: runnable entry point.
-- `docs/verification/training-path-coverage-2026-08-21.md`: authoritative per-route state, upstream ownership, real-VLM evidence and acceptance contracts.
-- `docs/implementation/framework-v1-2026-08.md`: what is implemented and why.
-- `docs/design/support-matrix-v1.md`: exact native/delegated/plugin ownership.
-- `docs/verification/verification-2026-08-20.md`: commands and observed evidence.
-- `docs/usage/model-plugin.md`: target model integration boundary.
-- `docs/usage/full-parameter-sft-p1.md`: true full-parameter SFT optimizer, diagnostics and activation-checkpoint contract.
-- `docs/usage/offline-dense-logit-kd.md`: native cache manifest, FP32 CE/KL, lineage, failure and resume contract.
-- `docs/usage/offline-reference-dpo.md`: native preference/reference-cache, FP32 sigmoid DPO, pair binding and exact-resume contract.
-- `docs/research/open-source-foundation-decision-2026-08.md`: open-source foundation decision.
-
-Next project work is the target VLM Model Plugin and target recipes/datasets. Audio understanding follows after the VLM path is stable; diffusion/generative training remains deferred. When scale/Ascend is re-prioritized, VeOmni is the first backend to validate.
+The detailed, authoritative claim boundary is
+`docs/verification/support-matrix.md`. Upstream source clones live outside
+Framework and are never imported or executed.

@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "name": "real-vlm-stage-04-offline-dense-logit-kd",
+  "local_modules": [
+    {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_model",
+      "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"
+    },
+    {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_io",
+      "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"
+    }
+  ],
+  "data": {
+    "source": {
+      "module": "data_source:trainomni/jsonl@1",
+      "config": {
+        "path": "data/kd.jsonl",
+        "sha256": "3d7c520b6e96f2798b1797251f8eb28015852ef836a7ee606e53382f116e054a",
+        "repeat": true
+      }
+    },
+    "transforms": [
+      {
+        "module": "sample_transform:trainomni/tensor_cache@1",
+        "config": {
+          "index_path": "cache/kd/index.json",
+          "index_sha256": "43f036cbcc03c4ae2fecaf8f18e9f92045616e19d5c60b2ab3c69951f968cb4c"
+        }
+      }
+    ],
+    "model_io": {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "config": {
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "mode": "dense_kd",
+        "max_text_tokens": 96
+      }
+    },
+    "supervision": {"module": "supervision:trainomni/dense_kd@1"},
+    "packer": {"module": "packer:trainomni/none@1"},
+    "collator": {
+      "module": "collator:trainomni/multimodal@1",
+      "config": {
+        "pad_token_id": 0,
+        "field_modes": {
+          "pixel_values": "concat",
+          "image_grid_thw": "concat",
+          "image_counts": "concat"
+        }
+      }
+    }
+  },
+  "model": {
+    "implementation": {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "config": {
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "load_dtype": "bf16",
+        "initial_artifact": "D:/Codex/TrainOmni/FrameworkValidation/artifacts/stage-03-sft",
+        "initial_artifact_sha256": "7591646b878b5059ce9641d480f4c8069b6aa5f0ccf812ba17d5f4c792fcf6dd"
+      }
+    },
+    "components": {}
+  },
+  "objective": {
+    "module": "objective:trainomni/dense_kd@1",
+    "config": {"ce_weight": 0.5, "kd_weight": 0.5, "temperature": 2.0}
+  },
+  "parameters": {
+    "module": "parameter_policy:trainomni/component@1",
+    "config": {"train": ["connector"], "group_per_component": true}
+  },
+  "evaluation": {
+    "data": {
+      "source": {
+        "module": "data_source:trainomni/jsonl@1",
+        "config": {
+          "path": "data/kd.jsonl",
+          "sha256": "3d7c520b6e96f2798b1797251f8eb28015852ef836a7ee606e53382f116e054a",
+          "repeat": true
+        }
+      },
+      "transforms": [
+        {
+          "module": "sample_transform:trainomni/tensor_cache@1",
+          "config": {
+            "index_path": "cache/kd/index.json",
+            "index_sha256": "43f036cbcc03c4ae2fecaf8f18e9f92045616e19d5c60b2ab3c69951f968cb4c"
+          }
+        }
+      ],
+      "model_io": {
+        "module": "model_io:validation/qwen35_vision_minicpm5@1",
+        "config": {
+          "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B",
+          "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+          "mode": "dense_kd",
+          "max_text_tokens": 96
+        }
+      },
+      "supervision": {"module": "supervision:trainomni/dense_kd@1"},
+      "packer": {"module": "packer:trainomni/none@1"},
+      "collator": {
+        "module": "collator:trainomni/multimodal@1",
+        "config": {
+          "pad_token_id": 0,
+          "field_modes": {
+            "pixel_values": "concat",
+            "image_grid_thw": "concat",
+            "image_counts": "concat"
+          }
+        }
+      }
+    },
+    "evaluators": [
+      {
+        "module": "evaluator:trainomni/loss@1",
+        "config": {"term": "token_ce", "metric_name": "kd_ce"}
+      },
+      {
+        "module": "evaluator:trainomni/loss@1",
+        "config": {"term": "dense_kl", "metric_name": "kd_kl"}
+      }
+    ]
+  },
+  "exporters": [{"module": "exporter:trainomni/safetensors@1"}]
+}
+

@@ -1,0 +1,133 @@
+{
+  "data": {
+    "collator": {
+      "config": {
+        "field_modes": {
+          "image_counts": "concat",
+          "image_grid_thw": "concat",
+          "pixel_values": "concat"
+        },
+        "pad_token_id": 0
+      },
+      "module": "collator:trainomni/multimodal@1"
+    },
+    "model_io": {
+      "config": {
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "max_text_tokens": 64,
+        "mode": "caption",
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+      },
+      "module": "model_io:validation/qwen35_vision_minicpm5@1"
+    },
+    "packer": {
+      "module": "packer:trainomni/none@1"
+    },
+    "source": {
+      "config": {
+        "path": "data/pretrain.jsonl",
+        "repeat": true,
+        "sha256": "4f3b716b61a7046505f9acfc1acbe19d28bbf1ba4e3fba0d337dc5f1ac8d9098"
+      },
+      "module": "data_source:trainomni/jsonl@1"
+    },
+    "supervision": {
+      "module": "supervision:trainomni/causal_lm@1"
+    },
+    "transforms": []
+  },
+  "evaluation": {
+    "data": {
+      "collator": {
+        "config": {
+          "field_modes": {
+            "image_counts": "concat",
+            "image_grid_thw": "concat",
+            "pixel_values": "concat"
+          },
+          "pad_token_id": 0
+        },
+        "module": "collator:trainomni/multimodal@1"
+      },
+      "model_io": {
+        "config": {
+          "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+          "max_text_tokens": 64,
+          "mode": "caption",
+          "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+        },
+        "module": "model_io:validation/qwen35_vision_minicpm5@1"
+      },
+      "packer": {
+        "module": "packer:trainomni/none@1"
+      },
+      "source": {
+        "config": {
+          "path": "data/pretrain.jsonl",
+          "repeat": true,
+          "sha256": "4f3b716b61a7046505f9acfc1acbe19d28bbf1ba4e3fba0d337dc5f1ac8d9098"
+        },
+        "module": "data_source:trainomni/jsonl@1"
+      },
+      "supervision": {
+        "module": "supervision:trainomni/causal_lm@1"
+      },
+      "transforms": []
+    },
+    "evaluators": [
+      {
+        "config": {
+          "metric_name": "pretraining_loss",
+          "term": "token_ce"
+        },
+        "module": "evaluator:trainomni/loss@1"
+      }
+    ]
+  },
+  "exporters": [
+    {
+      "module": "exporter:trainomni/safetensors@1"
+    }
+  ],
+  "local_modules": [
+    {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_model",
+      "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"
+    },
+    {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_io",
+      "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"
+    }
+  ],
+  "model": {
+    "components": {},
+    "implementation": {
+      "config": {
+        "initial_artifact": "D:\\Codex\\TrainOmni\\FrameworkValidation\\artifacts\\stage-04-kd",
+        "initial_artifact_sha256": "b76286a5eabdc8ec88e70d4a1267f458531d65b97635da211157abf1a4ac5a98",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "load_dtype": "bf16",
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+      },
+      "module": "model:validation/qwen35_vision_minicpm5@1"
+    }
+  },
+  "name": "real-vlm-exact-resume-pretraining",
+  "objective": {
+    "module": "objective:trainomni/causal_lm@1"
+  },
+  "parameters": {
+    "config": {
+      "group_per_component": true,
+      "train": [
+        "vision_encoder",
+        "connector",
+        "language_model"
+      ]
+    },
+    "module": "parameter_policy:trainomni/component@1"
+  },
+  "schema_version": 1
+}

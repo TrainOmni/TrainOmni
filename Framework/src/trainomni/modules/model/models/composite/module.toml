@@ -1,0 +1,7 @@
+api_version = 1
+kind = "model"
+namespace = "trainomni"
+name = "composite"
+version = "1"
+config = "config:CompositeModelConfig"
+entrypoint = "module:CompositeModel"

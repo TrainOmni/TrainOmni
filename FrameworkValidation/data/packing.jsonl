@@ -1,0 +1,2 @@
+{"sample_id":"pack-short-a","messages":[{"role":"user","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"What is this?"}]},{"role":"assistant","content":[{"kind":"text","value":"A geometry figure."}]}]}
+{"sample_id":"pack-short-b","messages":[{"role":"user","content":[{"kind":"image","value":"data/media/diagram-square.png"},{"kind":"text","value":"Name the visual type."}]},{"role":"assistant","content":[{"kind":"text","value":"A labeled diagram."}]}]}

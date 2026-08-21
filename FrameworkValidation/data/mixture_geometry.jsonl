@@ -1,0 +1,2 @@
+{"sample_id":"geometry-a","messages":[{"role":"user","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"Identify the visual domain."}]},{"role":"assistant","content":[{"kind":"text","value":"This is a geometry diagram."}]}]}
+{"sample_id":"geometry-b","messages":[{"role":"user","content":[{"kind":"image","value":"data/media/diagram-square.png"},{"kind":"text","value":"What structure is visible?"}]},{"role":"assistant","content":[{"kind":"text","value":"Labeled points are connected by line segments."}]}]}

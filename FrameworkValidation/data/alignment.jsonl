@@ -1,0 +1,2 @@
+{"sample_id":"align-0001","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"A geometry diagram with labeled points and line segments."}],"metadata":{"prompt":"Describe the image in one sentence."}}
+{"sample_id":"align-0002","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"The image shows a mathematical diagram used for spatial reasoning."}],"metadata":{"prompt":"Write a short visual caption."}}

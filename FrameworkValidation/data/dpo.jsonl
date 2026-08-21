@@ -1,0 +1,1 @@
+{"sample_id":"dpo-0001","messages":[{"role":"user","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"Describe this image accurately."}]}],"metadata":{"chosen":"A labeled geometry diagram connects several points with line segments.","rejected":"A photograph of a crowded city street at night."}}

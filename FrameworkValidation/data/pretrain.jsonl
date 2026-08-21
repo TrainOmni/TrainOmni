@@ -1,0 +1,2 @@
+{"sample_id":"pretrain-0001","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"This diagram contains multiple labeled geometric elements."}],"metadata":{"prompt":"What visual content is present?"}}
+{"sample_id":"pretrain-0002","content":[{"kind":"image","value":"data/media/diagram.png"},{"kind":"text","value":"A structured geometry figure connects points with several line segments."}],"metadata":{"prompt":"Describe the image precisely."}}

@@ -1,0 +1,4 @@
+[module]
+id = "objective:validation/position_weighted_ce@1"
+entrypoint = "module:descriptor"
+api_version = 1

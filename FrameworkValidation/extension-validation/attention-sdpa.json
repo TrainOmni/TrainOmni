@@ -1,0 +1,94 @@
+{
+  "held_out_evaluation": {
+    "batches": 1,
+    "metrics": {
+      "attention_loss": 4.359896146334135
+    },
+    "samples": 1
+  },
+  "inspection": {
+    "capabilities": [
+      "attention.semantic.model_default",
+      "batch.labels",
+      "batch.omni",
+      "data.encoded",
+      "data.packed",
+      "data.sample.omni",
+      "data.source.stateful",
+      "data.supervised",
+      "evaluation.loss",
+      "fusion.sequence_length_preserving",
+      "model.attention.semantic",
+      "model.monolithic",
+      "model.output.logits",
+      "model.parameters",
+      "objective.causal_lm",
+      "objective.loss_bundle",
+      "parameters.component"
+    ],
+    "sample_ids": [
+      "sft-0001"
+    ],
+    "task_digest": "0c5bcb926e80ad311ea1b712b310f4c1142650ea75c5c0aa0a7b9658ebc77e20"
+  },
+  "retention": {
+    "durable_receipt_contains_model_digest": true,
+    "large_temporary_checkpoint_removed_after_receipt": true
+  },
+  "route": "attention-sdpa",
+  "schema_version": 1,
+  "task": "D:\\Codex\\TrainOmni\\FrameworkValidation\\extension-attention.task.json",
+  "training": {
+    "checkpoint": {
+      "global_step": 2,
+      "model_sha256": "d73fb38b83ae5d28dfd13557f003f066c7490fa1acb8c23ab7eec6daf9f09389",
+      "run_digest": "16b2d9de08a2b44f9c4f50eeee19cc58a9be28066008be5640a584924556c9c6",
+      "task_digest": "0c5bcb926e80ad311ea1b712b310f4c1142650ea75c5c0aa0a7b9658ebc77e20"
+    },
+    "engine": {
+      "attention_kernel": "sdpa",
+      "attention_kernel_modules": [
+        "<root>"
+      ],
+      "device": "cuda:0",
+      "precision": "bf16_true"
+    },
+    "final_step": {
+      "cuda_max_allocated_bytes": 3138277888,
+      "cuda_max_reserved_bytes": 3198156800,
+      "data_metrics": {},
+      "global_step": 2,
+      "grad_norm": 20.5,
+      "learning_rate": 0.0005,
+      "loss": 4.239988803863525,
+      "loss_terms": {
+        "token_ce": 4.239988847212358
+      },
+      "micro_batches": 1,
+      "objective_metrics": {
+        "supervised_tokens": 11.0
+      },
+      "parameter_evidence": {
+        "connector": {
+          "after_sha256": "e8204733eab03125c2d4f7ab99df0e306232d674ba59d22767e771556404eee6",
+          "before_sha256": "5c70459cd7152de4ba5199b7dd5fb93e123fae0966e0a591be4a7332ee969501",
+          "changed_sampled_elements": 4389,
+          "changed_tensor_count": 3,
+          "changed_tensors": [
+            "connector.0.bias",
+            "connector.1.weight",
+            "connector.1.bias"
+          ],
+          "gradient_norm": 0.9998876452445984,
+          "max_abs_sampled_update": 0.0006103515625,
+          "parameter_count": 4,
+          "parameter_dtypes": [
+            "torch.bfloat16"
+          ],
+          "parameter_numel": 1576448,
+          "sampled_elements": 5632
+        }
+      }
+    }
+  }
+}
