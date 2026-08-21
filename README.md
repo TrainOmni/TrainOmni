@@ -1,98 +1,86 @@
 # TrainOmni Framework
 
-TrainOmni 是一个 **VLM-first**、模型中立、数据协议独立、后端可替换的全模态训练框架。当前版本只把视觉语言理解训练做深做稳；音频理解是下一模态扩展，diffusion/图像音视频生成明确延后。核心管理 canonical 多模态语义、模型/数据插件、Stage/Pipeline DAG、能力协商、精确恢复、产物血缘和 CLI；数值执行复用 PyTorch/Transformers/FSDP2/DCP，规模化路径优先适配 VeOmni，复杂 post-training/RL 委托给 TRL、veRL 或 NeMo 等开源后端。
+TrainOmni is a module-oriented multimodal training framework. Framework source,
+TaskSpec, RunSpec and generated output are separate roots. A model or training
+task is composed from typed modules; core code does not branch on model names.
 
-当前实现不是目标模型脚本。新 VLM 的正常接入只新增一个外部 Model Plugin，不修改 core、数据系统、训练循环或 CLI。
+The replacement implementation currently has an executable first vertical slice:
 
-## 已实现能力
+- explicit descriptor/registry/resolver with capability preflight;
+- separate, strict task and run schemas with independent SHA-256 identities;
+- generic hash-pinned task-local extensions for every module kind;
+- canonical sample to encoded/supervised/packed/batched data boundaries;
+- deterministic weighted multi-dataset sampling with named child sources and
+  exact-resume cursors/counts;
+- composite encoder/connector/fusion/language model assembly;
+- ordered multi-branch image/video routing through `ModalFeatureSet`, with
+  optional branches and an additive path for a later audio encoder;
+- model-default semantic attention policy and run-level attention-kernel boundary;
+- causal-LM, offline dense-logit KD and offline-reference DPO Objectives with
+  FP32 numerics, explicit masks/reductions and multi-forward planning;
+- full/component/freeze and native Linear-LoRA parameter policies;
+- AdamW, scheduler, accumulation, clipping, FP32/BF16/FP16 precision contracts;
+- component-scoped activation checkpointing;
+- optional `torch.compile` forward execution without compiled checkpoint keys;
+- atomic split model/optimizer/scheduler/objective/data/RNG checkpoints;
+- structured run identity, metrics and exact fresh-process resume;
+- held-out evaluation, generic/Transformers/LoRA export and strict artifact reload.
 
-- 完整阶段模型：vision preparation、alignment、multimodal pretraining、curriculum、SFT、distillation、reward/verifier、preference、online/agentic RL、evaluation/export。
-- strict YAML/JSON `RunSpec` 与 `PipelineSpec`，未知字段拒绝、稳定 fingerprint、静态 capability negotiation。
-- canonical image/video/audio/text/tool/grounding/preference/rollout sample；reader 与 importer 分离。
-- JSON/JSONL、Parquet、TAR-JSON reader；显式 `--data-plugin` 可加入任意 reader/importer。
-- weighted deterministic mixture、media-aware cost budget、batch planning、跨 rank 确定性 batch sharding、精确 reader/mixture/look-ahead state。
-- 外部 Model Plugin：build、capabilities、component exact-cover、encode、collate、export；加载代码必须显式 `--plugin` 授权。
-- built-in masked causal LM；DPO、distillation、GRPO、PPO 的 delegated objective contract。
-- PyTorch single/DDP/FSDP2 loop：component freeze/LR/weight decay/dtype/grad clip、gradient accumulation、AMP/TF32、scheduler、activation checkpointing、LoRA/QLoRA、`torch.compile`。
-- single/DDP 原子 local checkpoint；FSDP2 使用 DCP + rank-local exact runtime state；model-only DCP 可重分片并在单进程导出。
-- exact resume 保存 model、optimizer、scheduler、scaler、Python/Torch RNG、step/token、reader/mixture/batch state。
-- Pipeline DAG、stage inputs、artifact URI/lineage、metric/artifact/manual gates、持久化状态与恢复。
-- internal normalized-loss evaluator、显式授权的 external evaluator、model-plugin-owned export。
-- shell-free delegated stage engine；VeOmni 使用要求固定 revision 和 bridge API 的专用 VLM command adapter，TRL、NeMo、veRL/custom 使用通用 adapter。
-- JSONL metrics、resolved provenance、run/eval/export/delegated manifests。
+The automated vertical slice reads separate task/run files, loads five generic
+local modules (ModelIO, encoder, connector, fusion and language), trains a tiny
+composite VLM, checkpoints at step 2 and resumes to step 4.
 
-详见 [支持矩阵](docs/design/support-matrix-v1.md)、[架构蓝图](docs/design/framework-blueprint-v1.md) 和 [实现报告](docs/implementation/framework-v1-2026-08.md)。
+Important documents:
 
-## 安装
+- implementation sequence: docs/redesign/implementation-plan.md
+- concrete source/task/run tree: docs/architecture/directory-tree.md
+- generic extension contract: docs/modules/extensions.md
+- Objective/loss example: docs/modules/custom-objective.md
+- pinned upstream source ledger: docs/research/upstream-sources.md
+- Windows/Linux launch boundary: launch/README.md
+- modal branch/fusion ABI: docs/contracts/modal-features.md
+- multimodal field collation policies: docs/contracts/collation.md
+- canonical flat/chat samples and assistant-mask semantics: docs/contracts/samples.md
+- resumable sequence packing and attention isolation: docs/contracts/sequence-packing.md
+- verified support and explicit non-claims: docs/verification/support-matrix.md
+- current Windows CUDA development environment: docs/verification/windows-cuda-environment.md
+- real VLM five-stage CUDA evidence: docs/verification/real-vlm-five-stage-20260821.md
+- real VLM five-route exact-resume evidence: docs/verification/real-vlm-exact-resume-20260821.md
+- real VLM custom-objective/attention/mixture/packing/video evidence:
+  docs/verification/real-vlm-extension-routes-20260821.md
+- one task / one run / one command: docs/usage/quickstart.md
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[torch,peft]"
-```
+Basic command boundary:
 
-仅做 schema、数据、插件和规划检查时安装基础包即可：
+~~~text
+trainomni inspect --task <task.yaml> [--allow-local-code]
+trainomni train --task <task.yaml> --run <run.yaml> [--allow-local-code]
+trainomni train --task <task.yaml> --run <run.yaml> --resume <step-directory>
+trainomni evaluate --task <task.yaml> --run <run.yaml> --checkpoint <step-directory> --batches N
+trainomni export --task <task.yaml> --run <run.yaml> --checkpoint <step-directory>
+trainomni module-digest <module-directory>
+~~~
 
-```powershell
-python -m pip install -e .
-```
+Platform scripts are intentionally separate from the Python CLI. They require
+`TRAINOMNI_PYTHON` to be the absolute interpreter path and only forward arguments:
 
-## 先检查，再训练
+~~~text
+launch/windows/trainomni.ps1 <trainomni arguments...>
+launch/linux/trainomni.sh <trainomni arguments...>
+~~~
 
-```powershell
-$plugin = "examples/plugins/tiny_llava.py:PLUGIN"
+They never choose or install PyTorch, activate an environment, or own distributed
+topology. Distributed Windows/Linux adapters remain separate and unpublished until
+the corresponding Python runtime is executable and verified.
 
-trainomni --plugin $plugin validate configs/examples/tiny_llava_smoke.yaml
-trainomni --plugin $plugin inspect data configs/examples/tiny_llava_smoke.yaml --samples 2
-trainomni --plugin $plugin inspect batch configs/examples/tiny_llava_smoke.yaml --samples 1
-trainomni --plugin $plugin train configs/examples/tiny_llava_smoke.yaml `
-  --output-dir runs/tiny-llava
-```
+Local modules are trusted Python and require explicit opt-in. They are loaded in a
+digest-derived namespace without changing sys.path; this is provenance and module
+isolation, not a security sandbox.
 
-精确恢复、评测与导出：
-
-```powershell
-trainomni --plugin $plugin train configs/examples/tiny_llava_smoke.yaml `
-  --output-dir runs/tiny-llava-resumed `
-  --resume runs/tiny-llava/checkpoints/step-00000001 `
-  --trusted-resume
-
-trainomni --plugin $plugin evaluate configs/examples/tiny_llava_smoke.yaml `
-  --checkpoint runs/tiny-llava/checkpoints/step-00000002 `
-  --trusted-checkpoint --output-dir runs/eval --max-batches 2
-
-trainomni --plugin $plugin export configs/examples/tiny_llava_smoke.yaml `
-  --checkpoint runs/tiny-llava/checkpoints/step-00000002 `
-  --trusted-checkpoint --output-dir runs/export --format hf
-```
-
-Pipeline：
-
-```powershell
-trainomni --plugin $plugin plan configs/examples/tiny_llava_pipeline.yaml
-trainomni --plugin $plugin run configs/examples/tiny_llava_pipeline.yaml `
-  --output-dir runs/tiny-llava-pipeline
-```
-
-更多命令见 [Quickstart](docs/usage/quickstart.md)。
-
-## 验证
-
-```powershell
-$env:PYTHONDONTWRITEBYTECODE = "1"
-python -m unittest discover -s tests -v
-```
-
-当前证据：57 项自动测试通过（含 Parquet/TAR 状态恢复、凭据脱敏、两阶段物理 checkpoint 传递和 VeOmni bridge contract）；公开 1.05M 参数 tiny LLaVA 完成真实 encode→forward/backward→checkpoint→exact resume→eval→HF export；两进程 CPU DDP 和 FSDP2+DCP 均完成训练及 uninterrupted/resume 权重逐 tensor 等价验证。完整命令和结果见 [验证记录](docs/verification/verification-2026-08-20.md)。
-
-## 目录
-
-- `src/trainomni/`：框架实现。
-- `configs/examples/`：single、DDP、FSDP2、Pipeline 示例。
-- `examples/plugins/`：不修改 core 的公开模型插件。
-- `tests/plugins/`：dependency-free 与真实 PyTorch conformance 插件。
-- `docs/research/`：SOTA 框架调研与 Build-vs-Adopt 决策。
-- `docs/design/`：生命周期、需求、协议、支持矩阵。
-- `docs/usage/`：使用和扩展指南。
-- `docs/verification/`：可交接验证证据。
-
-当前优先级：VLM 训练与目标模型接入 > 音频理解协议和 encoder 接入 > 生成训练。Ascend/昇腾适配按用户要求暂不进入本版本；后续优先通过 VeOmni engine adapter 接入，不在 core 内重写 HCCL/分片训练。
+The current Windows development interpreter is `Framework/.venv/Scripts/python.exe`.
+It contains CUDA Torch and is excluded from Git; launchers still require an explicit
+`TRAINOMNI_PYTHON`, so a checkout never silently chooses an environment. Production
+dependency locking remains separate release work. Real-checkpoint single-GPU
+compatibility is now validated for the documented five-stage chain and its five
+fresh-process exact-resume routes; distributed execution remains a later gate.
+The pre-redesign implementation remains archived and is not part of this source tree.

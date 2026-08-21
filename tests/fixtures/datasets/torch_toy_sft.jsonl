@@ -1,2 +1,0 @@
-{"schema_version":"trainomni.sample.v0.1","id":"torch-toy-001","objective":"sft","messages":[{"role":"user","content":[{"type":"text","text":"Count to two."}]},{"role":"assistant","content":[{"type":"text","text":"One two."}]}]}
-{"schema_version":"trainomni.sample.v0.1","id":"torch-toy-002","objective":"sft","messages":[{"role":"user","content":[{"type":"text","text":"Say hello."}]},{"role":"assistant","content":[{"type":"text","text":"Hello."}]}]}

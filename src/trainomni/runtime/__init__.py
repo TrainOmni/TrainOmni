@@ -1,24 +1,15 @@
-"""Runtime assembly for stages and pipelines."""
+"""Task-agnostic execution services."""
 
-from .evaluate import evaluate_run
-from .export import ExportError, export_model
-from .pipeline import (
-    PIPELINE_RUN_STATE_VERSION,
-    PipelineExecutionError,
-    PipelineExecutor,
-    PipelineRunResult,
-)
-from .stage import StageExecutionError, StageRunRequest, execute_stage
+from .device import DeviceContext
+from .loop import StepMetrics, TrainEngine, execute_forward_plan
+from .optimization import build_optimizer, build_scheduler, clip_gradients
 
 __all__ = [
-    "PIPELINE_RUN_STATE_VERSION",
-    "ExportError",
-    "PipelineExecutionError",
-    "PipelineExecutor",
-    "PipelineRunResult",
-    "StageExecutionError",
-    "StageRunRequest",
-    "evaluate_run",
-    "execute_stage",
-    "export_model",
+    "DeviceContext",
+    "StepMetrics",
+    "TrainEngine",
+    "build_optimizer",
+    "build_scheduler",
+    "clip_gradients",
+    "execute_forward_plan",
 ]

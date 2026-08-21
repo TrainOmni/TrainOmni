@@ -1,0 +1,1 @@
+"""Multimodal tensor collation."""
