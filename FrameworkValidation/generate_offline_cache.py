@@ -1,4 +1,4 @@
-"""Generate tiny hash-pinned KD/DPO caches from one exported real VLM artifact."""
+"""Generate hash-pinned KD/DPO caches from one exported real VLM artifact."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def load_source_module(name: str, path: Path):
     return module
 
 
-def load_runtime(*, artifact: Path, mode: str):
+def load_runtime(*, artifact: Path, mode: str, max_text_tokens: int):
     model_module = load_source_module(
         "_validation_cache_model",
         ROOT / "modules" / "qwen_minicpm_model" / "module.py",
@@ -63,7 +63,7 @@ def load_runtime(*, artifact: Path, mode: str):
             vision_checkpoint=str(VISION),
             language_checkpoint=str(LANGUAGE),
             mode=mode,
-            max_text_tokens=96,
+            max_text_tokens=max_text_tokens,
         ),
         task_root=ROOT,
     )
@@ -88,38 +88,58 @@ def source(path: Path, digest: str):
     return JsonlSource(path, JsonlSourceConfig(path=str(path), sha256=digest, repeat=False))
 
 
-def write_index(output: Path, sample_id: str, tensors: dict[str, torch.Tensor]) -> None:
-    output.mkdir(parents=True, exist_ok=False)
+def write_sample(
+    output: Path,
+    index: dict,
+    sample_id: str,
+    tensors: dict[str, torch.Tensor],
+) -> None:
     tensor_file = output / f"{sample_id}.safetensors"
     save_file(tensors, tensor_file)
-    index = {
-        "schema_version": 1,
-        "samples": {
-            sample_id: {
-                "file": tensor_file.name,
-                "sha256": sha256(tensor_file),
-                "tensors": {name: name for name in sorted(tensors)},
-            }
-        },
+    index["samples"][sample_id] = {
+        "file": tensor_file.name,
+        "sha256": sha256(tensor_file),
+        "tensors": {name: name for name in sorted(tensors)},
     }
+
+
+def finalize_index(output: Path, index: dict) -> None:
     (output / "index.json").write_text(
         json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
 
 def generate_kd(args) -> None:
-    model, model_io, device = load_runtime(artifact=args.artifact, mode="dense_kd")
-    sample = source(args.data, args.data_sha256).next_sample()
-    prompt, answer = model_io._caption_values(sample)
-    input_ids, attention_mask, _ = model_io._encode_prompt_answer(prompt, answer)
-    inputs = {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        **model_io._vision_inputs(sample),
-    }
-    with torch.inference_mode(), device.autocast():
-        logits = model(**batched(inputs, device)).logits[0]
-    write_index(args.output, sample.sample_id, {"teacher_logits": logits.cpu().bfloat16()})
+    model, model_io, device = load_runtime(
+        artifact=args.artifact,
+        mode="dense_kd",
+        max_text_tokens=args.max_text_tokens,
+    )
+    args.output.mkdir(parents=True, exist_ok=False)
+    index = {"schema_version": 1, "samples": {}}
+    for data_path, digest in zip(args.data, args.data_sha256, strict=True):
+        stream = source(data_path, digest)
+        while True:
+            try:
+                sample = stream.next_sample()
+            except StopIteration:
+                break
+            prompt, answer = model_io._caption_values(sample)
+            input_ids, attention_mask, _ = model_io._encode_prompt_answer(prompt, answer)
+            inputs = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                **model_io._vision_inputs(sample),
+            }
+            with torch.inference_mode(), device.autocast():
+                logits = model(**batched(inputs, device)).logits[0]
+            write_sample(
+                args.output,
+                index,
+                sample.sample_id,
+                {"teacher_logits": logits.cpu().bfloat16()},
+            )
+    finalize_index(args.output, index)
 
 
 def branch_logps(model, model_io, device, sample, answer: str) -> torch.Tensor:
@@ -135,31 +155,48 @@ def branch_logps(model, model_io, device, sample, answer: str) -> torch.Tensor:
 
 
 def generate_dpo(args) -> None:
-    model, model_io, device = load_runtime(artifact=args.artifact, mode="preference")
-    sample = source(args.data, args.data_sha256).next_sample()
-    chosen = sample.metadata.get("chosen")
-    rejected = sample.metadata.get("rejected")
-    if not isinstance(chosen, str) or not isinstance(rejected, str):
-        raise TypeError("DPO source requires chosen/rejected strings")
-    tensors = {
-        "chosen_reference_logps": branch_logps(
-            model, model_io, device, sample, chosen
-        ),
-        "rejected_reference_logps": branch_logps(
-            model, model_io, device, sample, rejected
-        ),
-    }
-    write_index(args.output, sample.sample_id, tensors)
+    model, model_io, device = load_runtime(
+        artifact=args.artifact,
+        mode="preference",
+        max_text_tokens=args.max_text_tokens,
+    )
+    args.output.mkdir(parents=True, exist_ok=False)
+    index = {"schema_version": 1, "samples": {}}
+    for data_path, digest in zip(args.data, args.data_sha256, strict=True):
+        stream = source(data_path, digest)
+        while True:
+            try:
+                sample = stream.next_sample()
+            except StopIteration:
+                break
+            chosen = sample.metadata.get("chosen")
+            rejected = sample.metadata.get("rejected")
+            if not isinstance(chosen, str) or not isinstance(rejected, str):
+                raise TypeError("DPO source requires chosen/rejected strings")
+            tensors = {
+                "chosen_reference_logps": branch_logps(
+                    model, model_io, device, sample, chosen
+                ),
+                "rejected_reference_logps": branch_logps(
+                    model, model_io, device, sample, rejected
+                ),
+            }
+            write_sample(args.output, index, sample.sample_id, tensors)
+    finalize_index(args.output, index)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("kind", choices=("kd", "dpo"))
     parser.add_argument("--artifact", type=Path, required=True)
-    parser.add_argument("--data", type=Path, required=True)
-    parser.add_argument("--data-sha256", required=True)
+    parser.add_argument("--data", type=Path, action="append", required=True)
+    parser.add_argument("--data-sha256", action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    return parser.parse_args()
+    parser.add_argument("--max-text-tokens", type=int, default=96)
+    parsed = parser.parse_args()
+    if len(parsed.data) != len(parsed.data_sha256):
+        parser.error("--data and --data-sha256 counts must match")
+    return parsed
 
 
 if __name__ == "__main__":

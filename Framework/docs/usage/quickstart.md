@@ -103,6 +103,36 @@ checkpoint:
   every_steps: 100
 ```
 
+Execution is a RunSpec concern. The task is unchanged when moving between direct
+PyTorch backends:
+
+```yaml
+execution:
+  backend: torch_ddp       # single | torch_ddp | torch_fsdp2 | deepspeed
+  expected_world_size: 8
+  process_group_backend: nccl
+  ddp:
+    find_unused_parameters: false
+    static_graph: true
+```
+
+For FSDP2, the model plugin must return valid `DistributionHints.fsdp_units` and
+the backend is `torch_fsdp2`. DeepSpeed is an optional Linux-only execution probe;
+its native ZeRO checkpoint bridge is not complete, so checkpoint-enabled
+DeepSpeed runs fail closed. See `../architecture/distributed-execution.md`.
+
+A bounded training-only diagnostic can explicitly disable all checkpoint writes:
+
+```yaml
+checkpoint:
+  enabled: false
+  directory: outputs/checkpoints   # still anchors run identity/metrics
+  every_steps: 100
+```
+
+This mode cannot resume, evaluate, export or save explicitly. It is useful for
+loss/update/resource gates that should not duplicate multi-gigabyte payloads.
+
 Windows PowerShell startup keeps interpreter selection outside the task/run
 semantics:
 

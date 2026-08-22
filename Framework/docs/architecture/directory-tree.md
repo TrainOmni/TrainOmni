@@ -11,10 +11,10 @@ Framework/
 │   ├── README.md                  # common semantic launch contract
 │   ├── windows/
 │   │   ├── trainomni.ps1         # explicit Python + exact CLI forwarding
-│   │   └── distributed/           # reserved; no false support claim
+│   │   └── distributed/torchrun.ps1 # certified one-rank Windows probe
 │   └── linux/
 │       ├── trainomni.sh          # POSIX exec + exact CLI forwarding
-│       └── distributed/           # reserved for torchrun/Slurm adapters
+│       └── distributed/torchrun.sh # torch.distributed.run adapter
 ├── src/trainomni/
 │   ├── api/                       # stable Python-facing operations
 │   │   ├── train.py
@@ -39,6 +39,7 @@ Framework/
 │   │   ├── batch.py
 │   │   ├── forward.py
 │   │   ├── loss.py
+│   │   ├── distribution.py       # model-declared physical topology hints
 │   │   ├── state.py
 │   │   └── artifact.py
 │   ├── catalog/                   # builtin module descriptors, no construction
@@ -123,6 +124,11 @@ Framework/
 │   ├── runtime/                   # RunSpec execution; no task semantics
 │   │   ├── loop/{engine.py,step.py}
 │   │   ├── device/context.py
+│   │   ├── execution/
+│   │   │   ├── {process.py,protocol.py,factory.py,data.py,selection.py}
+│   │   │   ├── torch_backends.py # direct single/DDP/FSDP2
+│   │   │   ├── fsdp_state.py     # upstream portable state bridge
+│   │   │   └── deepspeed_backend.py # optional thin Linux adapter
 │   │   ├── kernels/{activation_checkpointing.py,compilation.py}
 │   │   ├── kernels/attention/selection.py
 │   │   ├── optimization/{optimizer.py,scheduler.py,gradients.py}
@@ -133,7 +139,7 @@ Framework/
 ├── tests/
 │   ├── contracts/
 │   ├── unit/{core,specs,catalog,assembly,modules,runtime}/
-│   ├── integration/{vertical_slice,objectives,evaluation_export}/
+│   ├── integration/{vertical_slice,objectives,distributed}/
 │   ├── resume/
 │   ├── distributed/
 │   ├── provenance/

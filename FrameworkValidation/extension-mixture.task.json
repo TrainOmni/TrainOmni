@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "real-vlm-extension-weighted-mixture",
   "local_modules": [
-    {"module": "model:validation/qwen35_vision_minicpm5_ext@2", "path": "modules/qwen_minicpm_model_ext", "source_sha256": "15fa47740849fed526e95127aa5726edca473a51c57c1794dec6c7e1a002a5b0"},
+    {"module": "model:validation/qwen35_vision_minicpm5_ext@2", "path": "modules/qwen_minicpm_model_ext", "source_sha256": "de7be6fec00b02e698f9c4eacd73f356c2ce4e88624386268df1588c1fbc5886"},
     {"module": "model_io:validation/qwen35_vision_minicpm5_ext@2", "path": "modules/qwen_minicpm_io_ext", "source_sha256": "6667cb9107dc00146351ee14b460cb518200ef046bbf027542319f0b20cd6744"}
   ],
   "data": {

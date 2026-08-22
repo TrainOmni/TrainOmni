@@ -10,8 +10,6 @@ from trainomni.modules.objectives.dpo.config import DPOConfig
 from trainomni.modules.objectives.dpo.module import DPOObjective
 from trainomni.modules.parameters.protocol import ParameterGroup, ParameterSelection
 from trainomni.runtime.loop.engine import TrainEngine
-from trainomni.runtime.optimization.optimizer import build_optimizer
-from trainomni.runtime.optimization.scheduler import build_scheduler
 from trainomni.specs.run import RunSpec
 
 
@@ -97,13 +95,10 @@ def make_engine(root: Path, name: str, objective, batch: OmniBatch) -> TrainEngi
         frozen_names=(),
     )
     run = run_spec(root, name)
-    optimizer = build_optimizer(run.optimizer, selection)
-    scheduler = build_scheduler(run.scheduler, optimizer, total_steps=run.max_steps)
     return TrainEngine(
         model=model,
         objective=objective,
-        optimizer=optimizer,
-        scheduler=scheduler,
+        parameter_selection=selection,
         stream=RepeatingStream(batch),
         run=run,
         task_digest=("a" if name == "kd" else "b") * 64,

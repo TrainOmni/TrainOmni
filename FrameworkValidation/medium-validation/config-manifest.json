@@ -1,0 +1,76 @@
+{
+  "dataset_manifest_sha256": "8eb92e52fa20f0d583bbff12e7c786cfcfd8ddb9ff8a43e2d43a72d8237fe8ae",
+  "routes": [
+    {
+      "cache_index_sha256": null,
+      "name": "alignment",
+      "run": "medium-validation/configs/alignment.run.json",
+      "run_sha256": "8f573bcb030d4d9d519e62389104633ae9c6c0302fc78e40a236855902216387",
+      "task": "medium-alignment.task.json",
+      "task_sha256": "8ef121df3ce353f2eef26c9610f2e1d9d551e3be9957f588c904e482e3d9ee07",
+      "train_data_sha256": "796aa303a07651c97fa54d8cdf0a9f623d3ee8de16ef23a7a5bad538b65484b7",
+      "validation_data_sha256": "c9b159e4660af92954ea1ac3f222a622e179c7a5e49eb70a4495cfde80005b34"
+    },
+    {
+      "cache_index_sha256": null,
+      "name": "multimodal_cpt",
+      "run": "medium-validation/configs/multimodal_cpt.run.json",
+      "run_sha256": "735400a02d4e0263be55bf2301b0d72c16acf6c414bab09fae0aae8472f417bc",
+      "task": "medium-multimodal_cpt.task.json",
+      "task_sha256": "8431c464dd68e243e4f6450e75daf95d5f69b08e8f652bcc92edfe23b61c2057",
+      "train_data_sha256": "796aa303a07651c97fa54d8cdf0a9f623d3ee8de16ef23a7a5bad538b65484b7",
+      "validation_data_sha256": "c9b159e4660af92954ea1ac3f222a622e179c7a5e49eb70a4495cfde80005b34"
+    },
+    {
+      "cache_index_sha256": null,
+      "name": "full_sft",
+      "run": "medium-validation/configs/full_sft.run.json",
+      "run_sha256": "a9af6372ea841518af0238710b7e26ec473b18f230ff98ec8ed8cb15a000ea9d",
+      "task": "medium-full_sft.task.json",
+      "task_sha256": "1b8bace8916ed82513e31ef5a9d9ee49b30915bcad79760e696348b7fccf8568",
+      "train_data_sha256": "fc9a1eb830c00da554e6e90e0fe080dd649862f6beddc5e94b62f8fa04b5ce56",
+      "validation_data_sha256": "c322efa5ef3939010ade4218bf37523d7094ab466369abfb9da3973710f862b8"
+    },
+    {
+      "cache_index_sha256": null,
+      "name": "lora_sft",
+      "run": "medium-validation/configs/lora_sft.run.json",
+      "run_sha256": "0614f24ef4dba7ac9f33b35d5141c1fe44314f542a5f9099f69c99ea97e24fe7",
+      "task": "medium-lora_sft.task.json",
+      "task_sha256": "f4afb9a39de461ef67fae917211c8f8106ecda24110b428a4f06a5c8a4f4a455",
+      "train_data_sha256": "fc9a1eb830c00da554e6e90e0fe080dd649862f6beddc5e94b62f8fa04b5ce56",
+      "validation_data_sha256": "c322efa5ef3939010ade4218bf37523d7094ab466369abfb9da3973710f862b8"
+    },
+    {
+      "cache_index_sha256": "9f314b6a5e11fe3362f326420b25ce675bc772d316216b4baf75cd79d82637e3",
+      "name": "offline_dense_kd",
+      "run": "medium-validation/configs/offline_dense_kd.run.json",
+      "run_sha256": "a0013697a194fbf936a0d3011debeb9dd008a16937faccf79e99ec95586230bb",
+      "task": "medium-offline_dense_kd.task.json",
+      "task_sha256": "fca477543ecf1be68addfc4e97564a9b665a4a18855e2368150f4e7016bd4e4e",
+      "train_data_sha256": "080b8decc515e884ce971508f22dcb09e67a7a46b4c67914a36e203492f2634b",
+      "validation_data_sha256": "f58179cbc6d13a1786519b4cf8d3a2b8d188e6cb2542d171b9f77b1d6a26fee7"
+    },
+    {
+      "cache_index_sha256": "2249d2f12b86058c5d121d28b69ec0cac3ad9a570d988880afc573e6e841d54b",
+      "name": "offline_reference_dpo",
+      "run": "medium-validation/configs/offline_reference_dpo.run.json",
+      "run_sha256": "da026afabc5410a0804c264f3273c44d01d3cc888bfb9a0a63e2899c5cfeed13",
+      "task": "medium-offline_reference_dpo.task.json",
+      "task_sha256": "4bba9153657be570cb09ba15f16322b23e8092d60fa9d2c24af4321d3cadf9c2",
+      "train_data_sha256": "6633e32d21572223cd7e10a92e3cb15c5aec072c7ef74d5881c32e2f2191c03b",
+      "validation_data_sha256": "e21d90dd12bec3a407eb79baa92ed7b2b118b49dc0d37a69d5cf74c9d556d1ff"
+    },
+    {
+      "cache_index_sha256": "2249d2f12b86058c5d121d28b69ec0cac3ad9a570d988880afc573e6e841d54b",
+      "name": "lora_dpo",
+      "run": "medium-validation/configs/lora_dpo.run.json",
+      "run_sha256": "8caee9578455121eda907eea97c5dfa23998a828504a777e3bc2d40369dbb61e",
+      "task": "medium-lora_dpo.task.json",
+      "task_sha256": "94b988362f1764e894e18501c1ad8a0eb8e1fbcd81d829d14314b4d6a8aadfd8",
+      "train_data_sha256": "6633e32d21572223cd7e10a92e3cb15c5aec072c7ef74d5881c32e2f2191c03b",
+      "validation_data_sha256": "e21d90dd12bec3a407eb79baa92ed7b2b118b49dc0d37a69d5cf74c9d556d1ff"
+    }
+  ],
+  "schema_version": 1
+}

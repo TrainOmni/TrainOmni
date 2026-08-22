@@ -4,6 +4,10 @@ from .loading import load_run, load_task
 from .run import (
     ActivationCheckpointSpec,
     CheckpointSpec,
+    DDPSpec,
+    DeepSpeedSpec,
+    ExecutionSpec,
+    FSDP2Spec,
     OptimizerGroupOverride,
     OptimizerSpec,
     RunSpec,
@@ -21,8 +25,12 @@ from .task import (
 __all__ = [
     "ActivationCheckpointSpec",
     "CheckpointSpec",
+    "DDPSpec",
     "DataPipelineSpec",
+    "DeepSpeedSpec",
     "EvaluationSpec",
+    "ExecutionSpec",
+    "FSDP2Spec",
     "LocalModuleSpec",
     "ModelAssemblySpec",
     "OptimizerGroupOverride",

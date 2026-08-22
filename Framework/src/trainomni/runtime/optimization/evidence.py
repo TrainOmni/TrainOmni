@@ -11,8 +11,17 @@ import torch
 from trainomni.core.errors import OptimizationError
 
 
+def _plain_tensor(tensor: torch.Tensor) -> torch.Tensor:
+    value = tensor.detach()
+    try:
+        from torch.distributed.tensor import DTensor
+    except ImportError:
+        return value
+    return value.full_tensor() if isinstance(value, DTensor) else value
+
+
 def _tensor_digest(tensor: torch.Tensor) -> str:
-    value = tensor.detach().contiguous().view(torch.uint8).cpu()
+    value = _plain_tensor(tensor).contiguous().view(torch.uint8).cpu()
     return hashlib.sha256(value.numpy().tobytes()).hexdigest()
 
 
@@ -55,7 +64,7 @@ def _gradient_norm(parameters: list[torch.Tensor]) -> float:
     squared = torch.zeros((), dtype=torch.float32, device=device)
     for parameter in parameters:
         if parameter.grad is not None:
-            squared += parameter.grad.detach().float().square().sum()
+            squared += _plain_tensor(parameter.grad).float().square().sum()
     return float(squared.sqrt().item())
 
 
@@ -103,7 +112,7 @@ def capture_update_snapshot(
             )
             if indices.numel():
                 values = (
-                    parameter.detach()
+                    _plain_tensor(parameter)
                     .reshape(-1)
                     .index_select(0, indices.to(parameter.device))
                     .float()
@@ -163,7 +172,7 @@ def finalize_update_evidence(
                 changed_tensors.append(tensor.name)
             if tensor.sample_indices.numel():
                 after_values = (
-                    parameter.detach()
+                    _plain_tensor(parameter)
                     .reshape(-1)
                     .index_select(0, tensor.sample_indices.to(parameter.device))
                     .float()

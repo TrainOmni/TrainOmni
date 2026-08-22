@@ -15,8 +15,6 @@ from trainomni.modules.objectives.causal_lm.module import CausalLMObjective
 from trainomni.modules.parameters.full.config import FullParameterConfig
 from trainomni.modules.parameters.full.module import FullParameterPolicy
 from trainomni.runtime.loop.engine import TrainEngine
-from trainomni.runtime.optimization.optimizer import build_optimizer
-from trainomni.runtime.optimization.scheduler import build_scheduler
 from trainomni.specs.run import RunSpec
 
 
@@ -145,13 +143,10 @@ def make_engine(checkpoint_root: Path) -> TrainEngine:
     )
     selection = FullParameterPolicy(FullParameterConfig()).apply(model)
     run = make_run(checkpoint_root)
-    optimizer = build_optimizer(run.optimizer, selection)
-    scheduler = build_scheduler(run.scheduler, optimizer, total_steps=run.max_steps)
     return TrainEngine(
         model=model,
         objective=CausalLMObjective(CausalLMConfig()),
-        optimizer=optimizer,
-        scheduler=scheduler,
+        parameter_selection=selection,
         stream=DeterministicStream(),
         run=run,
         task_digest="tiny-task-digest",

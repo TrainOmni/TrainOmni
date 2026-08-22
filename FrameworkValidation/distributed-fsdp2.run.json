@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "name": "real-vlm-single-rank-fsdp2-v2",
+  "seed": 26082202,
+  "deterministic": false,
+  "device": "cuda",
+  "precision": "bf16_true",
+  "attention_kernel": "sdpa",
+  "max_steps": 2,
+  "per_device_batch_size": 1,
+  "gradient_accumulation_steps": 2,
+  "max_grad_norm": 1.0,
+  "optimizer": {
+    "name": "adamw",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0,
+    "foreach": false
+  },
+  "scheduler": {"name": "constant"},
+  "activation_checkpointing": {"enabled": false},
+  "compile": {"enabled": false},
+  "execution": {
+    "backend": "torch_fsdp2",
+    "expected_world_size": 1,
+    "fsdp2": {
+      "wrap_policy": "model_declared",
+      "reshard_after_forward": true,
+      "cpu_offload": false
+    }
+  },
+  "update_evidence": {
+    "enabled": true,
+    "every_steps": 1,
+    "required_groups": ["connector"],
+    "sample_elements_per_group": 4096
+  },
+  "checkpoint": {
+    "directory": "runs/distributed-fsdp2-v2/checkpoints",
+    "every_steps": 1
+  }
+}

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "real-vlm-extension-custom-objective",
   "local_modules": [
-    {"module": "model:validation/qwen35_vision_minicpm5@1", "path": "modules/qwen_minicpm_model", "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"},
+    {"module": "model:validation/qwen35_vision_minicpm5@1", "path": "modules/qwen_minicpm_model", "source_sha256": "5f0e261b78877aebcda2f468067b9fe7a6d91357c36c8aaa31171ec061b1f601"},
     {"module": "model_io:validation/qwen35_vision_minicpm5@1", "path": "modules/qwen_minicpm_io", "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"},
     {"module": "objective:validation/position_weighted_ce@1", "path": "modules/position_weighted_ce", "source_sha256": "44ef37075f1732347d300b819f91db3e8c5d020888eb8eeb4653a7a36b9f4a49"}
   ],

@@ -13,14 +13,14 @@ from trainomni import __version__
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import CheckpointError, OptimizationError, SpecError
 from trainomni.runtime.checkpoint.manager import CheckpointManager
-from trainomni.runtime.device.context import DeviceContext
+from trainomni.runtime.execution import build_execution_backend
 from trainomni.runtime.kernels.activation_checkpointing import (
     apply_activation_checkpointing,
 )
 from trainomni.runtime.kernels.attention import apply_attention_kernel
-from trainomni.runtime.kernels.compilation import compile_forward
 from trainomni.runtime.observability import (
     JsonlEventWriter,
+    NullEventWriter,
     reset_peak_resources,
     snapshot_resources,
 )
@@ -28,7 +28,6 @@ from trainomni.runtime.optimization.evidence import (
     capture_update_snapshot,
     finalize_update_evidence,
 )
-from trainomni.runtime.optimization.gradients import clip_gradients
 from trainomni.runtime.optimization.optimizer import optimizer_metadata
 from trainomni.runtime.random import seed_everything
 from trainomni.specs.run import RunSpec
@@ -48,6 +47,7 @@ class StepMetrics:
     loss_terms: dict[str, float]
     objective_metrics: dict[str, float]
     data_metrics: dict[str, int | float]
+    data_metrics_by_rank: tuple[dict[str, int | float], ...]
     parameter_evidence: dict[str, dict[str, Any]]
 
 
@@ -57,28 +57,40 @@ class TrainEngine:
         *,
         model: Any,
         objective: Any,
-        optimizer: Any,
-        scheduler: Any | None,
+        parameter_selection: Any,
         stream: Any,
         run: RunSpec,
         task_digest: str,
         module_lock: dict[str, str],
     ) -> None:
-        self.model = model
         self.objective = objective
-        self.optimizer = optimizer
-        self.scheduler = scheduler
         self.stream = stream
         self.run = run
-        self.device = DeviceContext(run.device, run.precision)
         self.attention_kernel_modules = apply_attention_kernel(
-            self.model, run.attention_kernel
+            model, run.attention_kernel
         )
         self.activation_checkpoint_components = apply_activation_checkpointing(
-            self.model, run.activation_checkpointing
+            model, run.activation_checkpointing
         )
-        self.device.prepare_model(self.model)
-        self.execution_model = compile_forward(self.model, run.compile)
+        self.execution = build_execution_backend(
+            model=model,
+            selection=parameter_selection,
+            run=run,
+        )
+        self.model = self.execution.canonical_model
+        self.execution_model = self.execution.execution_model
+        self.optimizer = self.execution.optimizer
+        self.scheduler = self.execution.scheduler
+        self.process = self.execution.process
+        self.device = self.execution.device
+        if self.process.world_size > 1:
+            shard = getattr(self.stream, "shard", None)
+            if not callable(shard):
+                self.execution.close()
+                raise SpecError(
+                    "multi-rank execution requires a rank-shardable batch stream"
+                )
+            shard(rank=self.process.rank, world_size=self.process.world_size)
         self.global_step = 0
         self.micro_step = 0
         self.scaler = self._build_scaler()
@@ -88,13 +100,19 @@ class TrainEngine:
             run_digest=run.digest,
             module_lock=module_lock,
             framework_version=__version__,
+            process=self.process,
+            state_adapter=getattr(self.execution, "state_adapter", None),
         )
-        self.events = JsonlEventWriter(
-            run.checkpoint.directory.parent / "metrics" / "events.jsonl"
+        self.events = (
+            JsonlEventWriter(
+                run.checkpoint.directory.parent / "metrics" / "events.jsonl"
+            )
+            if self.process.is_primary
+            else NullEventWriter()
         )
         seed_everything(run.seed, deterministic=run.deterministic)
         reset_peak_resources(self.device.device)
-        self.optimizer.zero_grad(set_to_none=True)
+        self.execution.zero_grad()
         self.last_parameter_evidence: dict[str, dict[str, Any]] = {}
         self.events.write(
             "engine_initialized",
@@ -103,6 +121,7 @@ class TrainEngine:
                 "run_digest": run.digest,
                 "device": str(self.device.device),
                 "precision": run.precision,
+                "execution": self.execution.metadata(),
                 "attention_kernel": run.attention_kernel,
                 "attention_kernel_modules": self.attention_kernel_modules,
                 "compile": {
@@ -117,6 +136,8 @@ class TrainEngine:
         )
 
     def _build_scaler(self):
+        if self.execution.name == "deepspeed":
+            return None
         if self.run.precision != "fp16_mixed":
             return None
         if self.device.device.type != "cuda":
@@ -135,6 +156,8 @@ class TrainEngine:
         while self.global_step < target:
             records.append(self._optimizer_step())
         if (
+            self.run.checkpoint.enabled
+            and
             self.global_step > starting_step
             and self.global_step % self.run.checkpoint.every_steps != 0
         ):
@@ -148,22 +171,24 @@ class TrainEngine:
         accumulation = self.run.gradient_accumulation_steps
         for index in range(accumulation):
             self.micro_step = index
-            batch = self.device.move_batch(
-                self.stream.next_batch(self.run.per_device_batch_size)
-            )
-            context = ObjectiveContext(global_step=self.global_step, micro_step=index)
-            bundle = execute_forward_plan(
-                model=self.execution_model,
-                objective=self.objective,
-                batch=batch,
-                context=context,
-                device=self.device,
-            )
-            normalized = bundle.total / accumulation
-            if self.scaler is None:
-                normalized.backward()
-            else:
-                self.scaler.scale(normalized).backward()
+            with self.execution.accumulation_context(
+                final_microbatch=index == accumulation - 1
+            ):
+                batch = self.device.move_batch(
+                    self.stream.next_batch(self.run.per_device_batch_size)
+                )
+                context = ObjectiveContext(
+                    global_step=self.global_step, micro_step=index
+                )
+                bundle = execute_forward_plan(
+                    model=self.execution_model,
+                    objective=self.objective,
+                    batch=batch,
+                    context=context,
+                    device=self.device,
+                )
+                normalized = bundle.total / accumulation
+                self.execution.backward(normalized, self.scaler)
             accumulated_loss += float(bundle.total.detach().float().item())
             for name, term in bundle.terms.items():
                 values = term_totals.setdefault(name, [0.0, 0.0])
@@ -175,9 +200,8 @@ class TrainEngine:
                         name, 0.0
                     ) + float(value.detach().float().item())
 
-        if self.scaler is not None:
-            self.scaler.unscale_(self.optimizer)
-        grad_norm = clip_gradients(self.model.parameters(), self.run.max_grad_norm)
+        self.execution.unscale_gradients(self.scaler)
+        grad_norm = self.execution.clip_grad_norm(self.run.max_grad_norm)
         if not math.isfinite(grad_norm):
             self.optimizer.zero_grad(set_to_none=True)
             raise OptimizationError("gradient norm is non-finite; optimizer step aborted")
@@ -192,14 +216,8 @@ class TrainEngine:
                 self.optimizer,
                 sample_elements_per_group=evidence_spec.sample_elements_per_group,
             )
-        if self.scaler is None:
-            self.optimizer.step()
-        else:
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-        if self.scheduler is not None:
-            self.scheduler.step()
-        self.optimizer.zero_grad(set_to_none=True)
+        self.execution.step(self.scaler)
+        self.execution.zero_grad()
         self.global_step += 1
         self.micro_step = 0
         parameter_evidence = {}
@@ -211,27 +229,57 @@ class TrainEngine:
             )
             self.last_parameter_evidence = parameter_evidence
         resources = snapshot_resources(self.device.device)
+        accumulated_loss = self.process.reduce_float(
+            accumulated_loss / accumulation,
+            reduction="mean",
+            device=self.device.device,
+        )
         loss_terms = {
-            name: numerator / denominator
+            name: self.process.reduce_float(
+                numerator, reduction="sum", device=self.device.device
+            )
+            / self.process.reduce_float(
+                denominator, reduction="sum", device=self.device.device
+            )
             for name, (numerator, denominator) in term_totals.items()
         }
         objective_metrics = {
-            name: value / accumulation
+            name: self.process.reduce_float(
+                value / accumulation,
+                reduction="mean",
+                device=self.device.device,
+            )
             for name, value in objective_metric_totals.items()
         }
         data_metric_hook = getattr(self.stream, "metrics", None)
         data_metrics = {} if not callable(data_metric_hook) else dict(data_metric_hook())
+        data_metrics_by_rank = self.process.all_gather_metrics(data_metrics)
         record = StepMetrics(
             global_step=self.global_step,
-            loss=accumulated_loss / accumulation,
-            grad_norm=grad_norm,
+            loss=accumulated_loss,
+            grad_norm=self.process.reduce_float(
+                grad_norm, reduction="mean", device=self.device.device
+            ),
             micro_batches=accumulation,
             learning_rate=learning_rate,
-            cuda_max_allocated_bytes=resources.cuda_max_allocated_bytes,
-            cuda_max_reserved_bytes=resources.cuda_max_reserved_bytes,
+            cuda_max_allocated_bytes=int(
+                self.process.reduce_float(
+                    resources.cuda_max_allocated_bytes,
+                    reduction="max",
+                    device=self.device.device,
+                )
+            ),
+            cuda_max_reserved_bytes=int(
+                self.process.reduce_float(
+                    resources.cuda_max_reserved_bytes,
+                    reduction="max",
+                    device=self.device.device,
+                )
+            ),
             loss_terms=loss_terms,
             objective_metrics=objective_metrics,
             data_metrics=data_metrics,
+            data_metrics_by_rank=data_metrics_by_rank,
             parameter_evidence=parameter_evidence,
         )
         self.events.write(
@@ -247,14 +295,23 @@ class TrainEngine:
                 "loss_terms": record.loss_terms,
                 "objective_metrics": record.objective_metrics,
                 "data_metrics": record.data_metrics,
+                "data_metrics_by_rank": [
+                    {"rank": rank, "metrics": metrics}
+                    for rank, metrics in enumerate(record.data_metrics_by_rank)
+                ],
                 "parameter_evidence": record.parameter_evidence,
             },
         )
-        if self.global_step % self.run.checkpoint.every_steps == 0:
+        if (
+            self.run.checkpoint.enabled
+            and self.global_step % self.run.checkpoint.every_steps == 0
+        ):
             self.save_checkpoint()
         return record
 
     def save_checkpoint(self) -> Path:
+        if not self.run.checkpoint.enabled:
+            raise SpecError("checkpointing is disabled for this run")
         return self.checkpoints.save(
             global_step=self.global_step,
             micro_step=self.micro_step,
@@ -266,6 +323,7 @@ class TrainEngine:
             scaler=self.scaler,
             runtime_metadata={
                 "optimizer": optimizer_metadata(self.optimizer, self.run.optimizer),
+                "execution": self.execution.metadata(),
                 "parameter_evidence": self.last_parameter_evidence,
             },
         )
@@ -298,3 +356,6 @@ class TrainEngine:
                 "global_step": global_step,
             },
         )
+
+    def close(self) -> None:
+        self.execution.close()

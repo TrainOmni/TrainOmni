@@ -1,0 +1,63 @@
+{
+  "activation_checkpointing": {
+    "components": [
+      "vision_encoder",
+      "language_model"
+    ],
+    "enabled": true,
+    "use_reentrant": false
+  },
+  "attention_kernel": "sdpa",
+  "checkpoint": {
+    "directory": "D:/Codex/TrainOmni/FrameworkValidation/medium-validation/runs/full_sft/checkpoints",
+    "enabled": false,
+    "every_steps": 16
+  },
+  "compile": {
+    "enabled": false
+  },
+  "deterministic": false,
+  "device": "cuda:0",
+  "execution": {
+    "backend": "single",
+    "expected_world_size": 1
+  },
+  "gradient_accumulation_steps": 1,
+  "max_grad_norm": 1.0,
+  "max_steps": 16,
+  "name": "real-vlm-medium-v1-full-sft",
+  "optimizer": {
+    "foreach": false,
+    "groups": {
+      "connector": {
+        "learning_rate": 0.0003
+      },
+      "language_model": {
+        "learning_rate": 0.0001
+      },
+      "vision_encoder": {
+        "learning_rate": 0.0001
+      }
+    },
+    "learning_rate": 0.0001,
+    "name": "adamw",
+    "weight_decay": 0.0
+  },
+  "per_device_batch_size": 1,
+  "precision": "bf16_true",
+  "scheduler": {
+    "name": "constant"
+  },
+  "schema_version": 1,
+  "seed": 26082222,
+  "update_evidence": {
+    "enabled": true,
+    "every_steps": 4,
+    "required_groups": [
+      "vision_encoder",
+      "connector",
+      "language_model"
+    ],
+    "sample_elements_per_group": 4096
+  }
+}

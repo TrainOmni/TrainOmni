@@ -8,6 +8,14 @@ from typing import Any
 import torch
 
 
+def _local_or_full(tensor: torch.Tensor) -> torch.Tensor:
+    try:
+        from torch.distributed.tensor import DTensor
+    except ImportError:
+        return tensor
+    return tensor.full_tensor() if isinstance(tensor, DTensor) else tensor
+
+
 def clip_gradients(parameters: Iterable[Any], max_norm: float | None) -> float:
     materialized = tuple(parameter for parameter in parameters if parameter.requires_grad)
     if not materialized:
@@ -18,5 +26,6 @@ def clip_gradients(parameters: Iterable[Any], max_norm: float | None) -> float:
     squared = torch.zeros((), device=materialized[0].device, dtype=torch.float32)
     for parameter in materialized:
         if parameter.grad is not None:
-            squared = squared + parameter.grad.detach().float().square().sum()
+            gradient = _local_or_full(parameter.grad.detach())
+            squared = squared + gradient.float().square().sum()
     return float(squared.sqrt().item())

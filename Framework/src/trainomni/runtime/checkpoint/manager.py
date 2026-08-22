@@ -41,13 +41,33 @@ class CheckpointManager:
         run_digest: str,
         module_lock: Mapping[str, str],
         framework_version: str = "0.1.0",
+        process: Any | None = None,
+        state_adapter: Any | None = None,
     ) -> None:
         self.root = Path(root)
         self.task_digest = task_digest
         self.run_digest = run_digest
         self.module_lock = dict(sorted(module_lock.items()))
         self.framework_version = framework_version
+        self.process = process
+        self.state_adapter = state_adapter
         self.loaded_runtime_metadata: dict[str, Any] = {}
+
+    @property
+    def _is_primary(self) -> bool:
+        return self.process is None or bool(self.process.is_primary)
+
+    @property
+    def _world_size(self) -> int:
+        return 1 if self.process is None else int(self.process.world_size)
+
+    @property
+    def _rank(self) -> int:
+        return 0 if self.process is None else int(self.process.rank)
+
+    def _barrier(self) -> None:
+        if self.process is not None:
+            self.process.barrier()
 
     def step_path(self, global_step: int) -> Path:
         return self.root / f"step-{global_step:08d}"
@@ -87,11 +107,7 @@ class CheckpointManager:
         if micro_step != 0:
             raise CheckpointError("checkpoints are only valid at optimizer-step boundaries")
         directory = self.step_path(global_step)
-        self.root.mkdir(parents=True, exist_ok=True)
-        if directory.exists():
-            raise CheckpointError(f"refusing to overwrite checkpoint: {directory}")
         staging = self.root / f".{directory.name}.{uuid.uuid4().hex}.tmp"
-        staging.mkdir(exist_ok=False)
         runtime_metadata = dict(runtime_metadata or {})
         identity = self._identity(
             task_digest=self.task_digest,
@@ -100,43 +116,83 @@ class CheckpointManager:
             global_step=global_step,
             micro_step=micro_step,
         )
+        captured_model = None
+        captured_optimizer = None
+        if self.state_adapter is not None:
+            captured_model, captured_optimizer = self.state_adapter.capture(
+                model, optimizer
+            )
+        local_runtime = {
+            "scheduler": None if scheduler is None else scheduler.state_dict(),
+            "objective": dict(objective.state_dict()),
+            "stream": dict(stream.state_dict()),
+            "scaler": None if scaler is None else scaler.state_dict(),
+            "rng": capture_rng_state(),
+            "runtime_metadata": runtime_metadata,
+        }
+        rank_states = None
+        if self._world_size > 1:
+            if self._is_primary:
+                rank_states = [None] * self._world_size
+            torch.distributed.gather_object(
+                local_runtime,
+                object_gather_list=rank_states,
+                dst=0,
+            )
+        if not self._is_primary:
+            self._barrier()
+            return directory
+        self.root.mkdir(parents=True, exist_ok=True)
+        if directory.exists():
+            raise CheckpointError(f"refusing to overwrite checkpoint: {directory}")
+        staging.mkdir(exist_ok=False)
         try:
             try:
-                from safetensors.torch import save_model
+                from safetensors.torch import save_file, save_model
             except ImportError as exc:
                 raise CheckpointError("checkpointing requires safetensors") from exc
             model_path = staging / _MODEL_FILE
-            save_model(
-                model,
-                str(model_path),
-                metadata={
-                    "format": "pt",
-                    "task_digest": self.task_digest,
-                    "run_digest": self.run_digest,
-                    "global_step": str(global_step),
-                },
-            )
+            model_metadata = {
+                "format": "pt",
+                "task_digest": self.task_digest,
+                "run_digest": self.run_digest,
+                "global_step": str(global_step),
+            }
+            if captured_model is None:
+                save_model(model, str(model_path), metadata=model_metadata)
+            else:
+                portable_model = {
+                    name: value.detach().cpu().contiguous().clone()
+                    for name, value in captured_model.items()
+                }
+                save_file(portable_model, str(model_path), metadata=model_metadata)
             optimizer_path = staging / _OPTIMIZER_FILE
             temporary_optimizer = staging / f".{_OPTIMIZER_FILE}.tmp"
             torch.save(
-                {"identity": identity, "optimizer": optimizer.state_dict()},
+                {
+                    "identity": identity,
+                    "optimizer": (
+                        optimizer.state_dict()
+                        if captured_optimizer is None
+                        else captured_optimizer
+                    ),
+                },
                 temporary_optimizer,
             )
             os.replace(temporary_optimizer, optimizer_path)
             runtime_path = staging / _RUNTIME_FILE
             temporary_runtime = staging / f".{_RUNTIME_FILE}.tmp"
-            torch.save(
-                {
+            runtime_payload = (
+                {"identity": identity, **local_runtime}
+                if rank_states is None
+                else {
                     "identity": identity,
-                    "scheduler": None if scheduler is None else scheduler.state_dict(),
-                    "objective": dict(objective.state_dict()),
-                    "stream": dict(stream.state_dict()),
-                    "scaler": None if scaler is None else scaler.state_dict(),
-                    "rng": capture_rng_state(),
+                    "distributed_world_size": self._world_size,
+                    "rank_states": rank_states,
                     "runtime_metadata": runtime_metadata,
-                },
-                temporary_runtime,
+                }
             )
+            torch.save(runtime_payload, temporary_runtime)
             os.replace(temporary_runtime, runtime_path)
             manifest = CheckpointManifest(
                 schema_version=2,
@@ -164,6 +220,7 @@ class CheckpointManager:
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+        self._barrier()
         return directory
 
     def _read_manifest(self, checkpoint: Path) -> tuple[Path, CheckpointManifest]:
@@ -235,16 +292,20 @@ class CheckpointManager:
             directory, manifest.model_file, manifest.model_sha256
         )
         try:
-            from safetensors.torch import load_model
+            from safetensors.torch import load_file, load_model
         except ImportError as exc:
             raise CheckpointError("checkpoint loading requires safetensors") from exc
         try:
-            missing, unexpected = load_model(
-                model,
-                model_path,
-                strict=True,
-                device=str(map_location),
-            )
+            if self.state_adapter is None:
+                missing, unexpected = load_model(
+                    model,
+                    model_path,
+                    strict=True,
+                    device=str(map_location),
+                )
+            else:
+                self.state_adapter.load_model(model, load_file(model_path, device="cpu"))
+                missing, unexpected = (), ()
         except Exception as exc:
             raise CheckpointError(f"checkpoint model is incompatible: {exc}") from exc
         if missing or unexpected:
@@ -261,10 +322,23 @@ class CheckpointManager:
                 owner="runtime state",
             )
             self._validate_payload_identity(runtime, manifest, owner="runtime state")
-            if "objective" not in runtime:
+            if "rank_states" in runtime:
+                rank_states = runtime["rank_states"]
+                if (
+                    int(runtime.get("distributed_world_size", -1)) != self._world_size
+                    or not isinstance(rank_states, (tuple, list))
+                    or len(rank_states) != self._world_size
+                ):
+                    raise CheckpointError(
+                        "distributed checkpoint rank states are incompatible"
+                    )
+                runtime_state = rank_states[self._rank]
+            else:
+                runtime_state = runtime
+            if not isinstance(runtime_state, Mapping) or "objective" not in runtime_state:
                 raise CheckpointError("checkpoint runtime state has no objective")
             try:
-                objective.load_state_dict(runtime["objective"])
+                objective.load_state_dict(runtime_state["objective"])
             except Exception as exc:
                 raise CheckpointError(
                     f"checkpoint objective state is incompatible: {exc}"
@@ -319,38 +393,66 @@ class CheckpointManager:
             "rng",
             "runtime_metadata",
         }
-        if set(runtime) != required_runtime:
-            raise CheckpointError("checkpoint runtime state keys are invalid")
-        if (runtime["scaler"] is None) != (scaler is None):
+        distributed_runtime = "rank_states" in runtime
+        if distributed_runtime:
+            expected_distributed = {
+                "identity",
+                "distributed_world_size",
+                "rank_states",
+                "runtime_metadata",
+            }
+            if set(runtime) != expected_distributed:
+                raise CheckpointError("distributed checkpoint runtime keys are invalid")
+            if int(runtime["distributed_world_size"]) != self._world_size:
+                raise CheckpointError("distributed checkpoint world size changed")
+            rank_states = runtime["rank_states"]
+            if not isinstance(rank_states, (tuple, list)) or len(rank_states) != self._world_size:
+                raise CheckpointError("distributed checkpoint rank states are invalid")
+            runtime_state = rank_states[self._rank]
+            if not isinstance(runtime_state, Mapping):
+                raise CheckpointError("distributed checkpoint local rank state is invalid")
+        else:
+            if set(runtime) != required_runtime:
+                raise CheckpointError("checkpoint runtime state keys are invalid")
+            runtime_state = runtime
+        if (runtime_state["scaler"] is None) != (scaler is None):
             raise CheckpointError("checkpoint scaler state is incompatible with this run")
-        if (runtime["scheduler"] is None) != (scheduler is None):
+        if (runtime_state["scheduler"] is None) != (scheduler is None):
             raise CheckpointError("checkpoint scheduler state is incompatible with this run")
-        if runtime["runtime_metadata"] != manifest.runtime_metadata:
+        if runtime_state["runtime_metadata"] != manifest.runtime_metadata:
             raise CheckpointError("checkpoint runtime metadata disagrees with manifest")
         try:
-            from safetensors.torch import load_model
+            from safetensors.torch import load_file, load_model
         except ImportError as exc:
             raise CheckpointError("checkpoint loading requires safetensors") from exc
         try:
-            missing, unexpected = load_model(
-                model,
-                model_path,
-                strict=True,
-                device=str(map_location),
-            )
-            if missing or unexpected:
-                raise CheckpointError(
-                    f"checkpoint model keys differ: missing={missing}, "
-                    f"unexpected={unexpected}"
+            if self.state_adapter is None:
+                missing, unexpected = load_model(
+                    model,
+                    model_path,
+                    strict=True,
+                    device=str(map_location),
                 )
-            optimizer.load_state_dict(optimizer_payload["optimizer"])
+                if missing or unexpected:
+                    raise CheckpointError(
+                        f"checkpoint model keys differ: missing={missing}, "
+                        f"unexpected={unexpected}"
+                    )
+                optimizer.load_state_dict(optimizer_payload["optimizer"])
+            else:
+                self.state_adapter.load_training(
+                    model,
+                    optimizer,
+                    load_file(model_path, device="cpu"),
+                    optimizer_payload["optimizer"],
+                )
             if scheduler is not None:
-                scheduler.load_state_dict(runtime["scheduler"])
-            objective.load_state_dict(runtime["objective"])
-            stream.load_state_dict(runtime["stream"])
+                scheduler.load_state_dict(runtime_state["scheduler"])
+            objective.load_state_dict(runtime_state["objective"])
+            stream.load_state_dict(runtime_state["stream"])
             if scaler is not None:
-                scaler.load_state_dict(runtime["scaler"])
-            restore_rng_state(runtime["rng"])
+                scaler.load_state_dict(runtime_state["scaler"])
+            restore_rng_state(runtime_state["rng"])
         except CheckpointError:
             raise
         except Exception as exc:

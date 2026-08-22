@@ -49,7 +49,8 @@ which hardware was actually used.
 | FP32 | verified on CPU | full lifecycle |
 | true BF16 and BF16 autocast | true-BF16 CUDA real lifecycle verified | RTX 4060 Ti five-stage real VLM train/checkpoint/evaluate/export plus five-route fresh-process exact resume |
 | FP16 autocast | implemented for CUDA only | no CUDA verification in the replacement environment yet |
-| CUDA memory allocated/reserved metrics | real-VLM verified | all five stages record nonzero structured peaks; full-model maximum reserved was 12,236,881,920 bytes |
+| CUDA memory allocated/reserved metrics | real-VLM verified | all routes record nonzero structured peaks; medium full-model maximum reserved was 12,656,312,320 bytes |
+| Training-only diagnostics without checkpoint payloads | verified on seven real-VLM routes | `checkpoint.enabled=false` preserves identities/metrics, writes no periodic/final state, and rejects explicit save |
 
 ## Checkpoint, evaluation, export and extension
 
@@ -57,6 +58,8 @@ which hardware was actually used.
 | --- | --- | --- |
 | Atomic split checkpoint | verified | `model.safetensors`, `optimizer.pt`, `runtime.pt`, manifest SHA-256 |
 | Exact resume | verified on real VLM CUDA routes | full SFT, pretraining, alignment, offline KD and offline DPO match uninterrupted logical model/AdamW/runtime state and final evidence after fresh-process resume |
+| Distributed runtime-state identity | implemented and world-size-one verified | every rank contributes scheduler/objective/data/scaler/RNG state; topology changes fail; multi-rank server gate remains |
+| FSDP2 portable full-state checkpoint | CUDA world-size-one verified | upstream distributed state-dict APIs bridge DTensor model/optimizer state to the atomic TrainOmni format; multi-rank exact resume remains a server gate |
 | Model-only evaluation/export load | verified | does not allocate/load optimizer state; objective restore is optional |
 | Held-out evaluation | verified | separate data stream, eval/inference/autocast/device semantics |
 | Generic full-state safetensors export | verified | composite and monolithic fixtures |
@@ -71,17 +74,23 @@ which hardware was actually used.
 
 | Route | Status | Boundary |
 | --- | --- | --- |
-| Single process/device | verified on CPU | current executable runtime |
+| Single process/device | verified on CPU and real VLM CUDA | default direct PyTorch runtime |
 | CUDA single-device | real VLM five-stage lifecycle and exact resume verified | Windows, RTX 4060 Ti, Torch 2.13.0+cu130; uninterrupted train/checkpoint/evaluate/export, strict reload and five-route fresh-process resume pass |
-| DDP | explicitly deferred | no source stub, RunSpec field, launcher, or support claim |
-| FSDP2 | explicitly deferred | requires distributed checkpoint/topology contract and two-process tests |
+| DDP | implemented; CUDA world-size-one real backend verified | direct PyTorch DDP, real process group, rank-sharded data, accumulation `no_sync`, global metrics and atomic resume; real multi-rank Linux/NCCL is a server gate |
+| FSDP2 | implemented; CUDA world-size-one real backend verified | direct PyTorch `fully_shard`, model-declared units, accumulation sync control and portable checkpoint/eval/resume pass; real multi-rank Linux/NCCL is a server gate |
+| DeepSpeed ZeRO 0/1/2/3 | thin optional Linux adapter; needs server execution | upstream owns backward/step/partitioning; Windows fails closed, no fallback; native ZeRO checkpoint bridge is absent so checkpoint-enabled runs fail closed |
+| Deterministic distributed data and metrics | implemented; world-size-one runtime plus multi-rank deterministic unit gate | disjoint rank streams and exact cursors; loss/term/objective/resource reductions; per-rank data metrics preserved without guessed aggregation |
+| Dense models under data/sharded parallel | implemented as above | DDP replicates; FSDP2 shards model-declared transformer units |
+| MoE expert parallel | unsupported and fail-closed | DDP may replicate experts as ordinary data parallelism; generic FSDP2/DeepSpeed reject expert/router hints because no expert groups or dispatch exist |
 | Tensor/pipeline/context parallel | unsupported | no advertised schema or fallback |
 | Ascend/HCCL/NPU | explicitly deferred | later device/distributed adapter; no model/objective fork |
-| Windows launcher | verified | explicit interpreter, pure CLI forwarding |
-| Linux launcher | present, platform test skipped on Windows | Linux validation intentionally postponed |
+| NVIDIA B200 | Linux server gate | current BF16 CUDA/NCCL path should be used first; FP8/MXFP8/NVFP4 are unsupported until an explicit Transformer Engine adapter exists |
+| Windows launchers | verified | explicit interpreter; single-process wrapper plus certified one-rank distributed probe, no native CUDA multi-process claim |
+| Linux launchers | source-checked; executable platform test pending | single-process `exec` and `torch.distributed.run` wrappers are isolated from task/run semantics |
 
 TRL, PEFT, Accelerate, ms-swift, LLaMA-Factory, VeOmni, TorchTitan and NeMo are
 not runtime dependencies or backends. Their pinned source trees are external
 reading references only. The in-process runtime dependency set is declared in
 `pyproject.toml`: PyTorch, Transformers, safetensors, PyYAML and Pillow; PyAV is
-optional only for video-file decoding.
+optional only for video-file decoding. DeepSpeed is an optional Linux dependency
+used only when its explicit execution backend is selected.

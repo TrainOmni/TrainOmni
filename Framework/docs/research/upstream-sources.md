@@ -1,9 +1,10 @@
 # Upstream source reference ledger
 
-The upstream repositories are reading material, not TrainOmni runtime
-dependencies, vendored source, Git submodules, or delegated backends. Physical
-checkouts are deliberately outside the Framework tree. On the current development
-machine they are under:
+The upstream repositories are pinned source references, not vendored source or
+Git submodules. Most are reading material only; PyTorch/Transformers are base
+dependencies and DeepSpeed has a separately selected optional thin adapter.
+Physical checkouts are deliberately outside the Framework tree. On the current
+development machine they are under:
 
 ```text
 D:\Codex\TrainOmniTemp\framework-upstream-references-20260821\upstreams
@@ -23,7 +24,9 @@ The reproducible identities used during the redesign are:
 | NeMo AutoModel | `c63a6633f48fd68a4ff738c63ce05389446533ec` | reference only | VLM composition constraints |
 | ms-swift | `a54a4ae5c8680451ba4ddc91ad4577a38c74d560` | reference only | VLM templates/masks/model metadata |
 | LLaMA-Factory | `c4e09c7cbe18844816af9e18a97fe465515edbcd` | reference only | task/data configuration UX |
+| DeepSpeed | `cf44300453eb0af79ed84ed8f1cb49d57478bd76` | optional Linux backend + reference | ZeRO execution/config/checkpoint boundary |
 
 No code has been copied from these repositories into the replacement
-implementation. Any future copied or substantially derived code requires a
-license check and a source/commit/path entry in a third-party notice.
+implementation. Optional DeepSpeed is imported through its public API only. Any
+future copied or substantially derived code requires a license check and a
+source/commit/path entry in a third-party notice.

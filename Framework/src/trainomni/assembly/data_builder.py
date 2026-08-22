@@ -9,6 +9,7 @@ from trainomni.core.context import BuildContext
 from trainomni.core.errors import CheckpointError
 from trainomni.core.module import ModuleKind
 from trainomni.core.resolver import ModuleResolver
+from trainomni.runtime.execution.data import RankShardedSource
 from trainomni.specs.task import DataPipelineSpec
 
 
@@ -46,6 +47,21 @@ class DataPipelineStream:
         self.packer = packer
         self.collator = collator
         self._ready = []
+
+    def shard(self, *, rank: int, world_size: int) -> None:
+        if world_size == 1:
+            return
+        if isinstance(self.source, RankShardedSource):
+            if (self.source.rank, self.source.world_size) != (rank, world_size):
+                raise CheckpointError("data stream was already sharded for another topology")
+            return
+        if self._ready:
+            raise CheckpointError("data stream must be sharded before reading samples")
+        self.source = RankShardedSource(
+            self.source,
+            rank=rank,
+            world_size=world_size,
+        )
 
     def next_batch(self, batch_size: int):
         if batch_size <= 0:

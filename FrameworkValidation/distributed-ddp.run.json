@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "name": "real-vlm-single-rank-ddp",
+  "seed": 26082201,
+  "deterministic": false,
+  "device": "cuda",
+  "precision": "bf16_true",
+  "attention_kernel": "sdpa",
+  "max_steps": 2,
+  "per_device_batch_size": 1,
+  "gradient_accumulation_steps": 2,
+  "max_grad_norm": 1.0,
+  "optimizer": {
+    "name": "adamw",
+    "learning_rate": 0.001,
+    "weight_decay": 0.0,
+    "foreach": false
+  },
+  "scheduler": {"name": "constant"},
+  "activation_checkpointing": {"enabled": false},
+  "compile": {"enabled": false},
+  "execution": {
+    "backend": "torch_ddp",
+    "expected_world_size": 1,
+    "ddp": {
+      "find_unused_parameters": false,
+      "broadcast_buffers": true,
+      "gradient_as_bucket_view": true,
+      "static_graph": true
+    }
+  },
+  "update_evidence": {
+    "enabled": true,
+    "every_steps": 1,
+    "required_groups": ["connector"],
+    "sample_elements_per_group": 4096
+  },
+  "checkpoint": {
+    "directory": "runs/distributed-ddp/checkpoints",
+    "every_steps": 1
+  }
+}

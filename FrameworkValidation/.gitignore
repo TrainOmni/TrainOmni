@@ -1,0 +1,6 @@
+# Reproducible validation payloads stay local; source/config/compact receipts are tracked.
+artifacts/
+cache/
+data/medium-v1/
+runs/
+*.safetensors

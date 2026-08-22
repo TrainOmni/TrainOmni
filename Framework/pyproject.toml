@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 video = ["av>=12"]
+deepspeed = ["deepspeed>=0.19,<0.20; platform_system != 'Windows'"]
 test = ["pytest>=8", "ruff>=0.9"]
 
 [project.scripts]

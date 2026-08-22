@@ -35,3 +35,15 @@ Earlier sibling run directories are retained failure evidence from defects found
 during the gate. The final complete artifact is `artifacts/stage-05-final`; large
 intermediate payloads were pruned after downstream consumption, while manifests,
 metrics, resolved identities and evaluation receipts remain.
+
+The distributed gate adds direct PyTorch DDP and FSDP2 world-size-one execution
+on the RTX 4060 Ti, including real process groups, forward/backward/update,
+portable checkpoint, resume and held-out evaluation. These are backend probes,
+not multi-card claims; Linux/NCCL multi-rank remains a server gate.
+
+The medium-data gate deterministically converts the pinned diagram and InterGPS
+Parquet bundle into 240/30 and 1024/128 train/validation splits, with bounded
+64/16 KD and DPO cache subsets. Seven routes complete 16 distinct-data optimizer
+steps each. Reproducible preparation/summarization scripts are in this directory;
+the compact authoritative result is `medium-validation/receipt.json`. Generated
+media, caches, checkpoints and run directories are intentionally Git-ignored.

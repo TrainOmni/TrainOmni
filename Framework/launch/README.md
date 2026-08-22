@@ -52,12 +52,24 @@ TRAINOMNI_PYTHON=/absolute/path/to/python \
 It uses `exec` so the Python process receives signals directly and becomes the
 process supervised by a terminal, container, Slurm step, or other orchestrator.
 
-## Deliberate separation from distributed launch
+## Distributed launch
 
-These two files start one TrainOmni controller/worker process. They do not wrap
-`torchrun`, Slurm, `mpirun`, Kubernetes, or Ascend launchers. Distributed process
-creation gets its own adapters under `launch/<platform>/distributed/` only after
-the Python distributed runtime contract is executable.
+The single-process files above never wrap a process launcher. PyTorch DDP,
+FSDP2, and the thin DeepSpeed adapter use separate torchrun wrappers:
+
+```powershell
+& .\launch\windows\distributed\torchrun.ps1 -NProcPerNode 1 `
+  train --task D:\task.json --run D:\run.json
+```
+
+```sh
+./launch/linux/distributed/torchrun.sh --nproc-per-node 8 -- \
+  train --task /task.json --run /run.json
+```
+
+Multi-node host facts are launcher inputs (node count, rendezvous address/port,
+and Linux static node rank). The selected execution backend and expected world size remain strict
+RunSpec fields. The wrappers never inspect a task or run file.
 
 The future split is fixed now:
 
@@ -65,10 +77,10 @@ The future split is fixed now:
 launch/
 ├── windows/
 │   ├── trainomni.ps1
-│   └── distributed/             # PowerShell/Windows process adapter
+│   └── distributed/torchrun.ps1
 ├── linux/
 │   ├── trainomni.sh
-│   └── distributed/             # torchrun/Slurm/container adapters
+│   └── distributed/torchrun.sh
 └── README.md
 ```
 
@@ -78,7 +90,7 @@ recorded in a launch receipt, not copied into TaskSpec. A distributed adapter ma
 translate host facts to upstream launcher arguments, but it may not implement a
 training loop or checkpoint policy.
 
-No distributed script is published yet: the current Python distributed modules
-are placeholders, so an apparently working multi-process shell wrapper would be
-unsafe. Linux validation will add the Linux adapter tests and executable-mode
-verification without changing the Python training interface.
+Native Windows has Gloo but no NCCL/libuv in the validated PyTorch build, so its
+wrapper directly starts one worker and is certified only for world-size-one backend probes. Real CUDA
+multi-device execution belongs on Linux/NCCL. The Linux wrapper is source-checked
+on Windows; its executable multi-process gate remains a Linux-server test.

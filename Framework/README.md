@@ -22,7 +22,12 @@ The replacement implementation currently has an executable first vertical slice:
 - AdamW, scheduler, accumulation, clipping, FP32/BF16/FP16 precision contracts;
 - component-scoped activation checkpointing;
 - optional `torch.compile` forward execution without compiled checkpoint keys;
+- direct PyTorch single/DDP/FSDP2 execution selected by RunSpec, with rank-safe
+  data, metrics and checkpoint state;
+- optional Linux DeepSpeed ZeRO adapter with explicit fail-closed checkpoint and
+  platform boundaries;
 - atomic split model/optimizer/scheduler/objective/data/RNG checkpoints;
+- explicit checkpoint-disabled diagnostic runs that retain identities/metrics;
 - structured run identity, metrics and exact fresh-process resume;
 - held-out evaluation, generic/Transformers/LoRA export and strict artifact reload.
 
@@ -48,6 +53,10 @@ Important documents:
 - real VLM five-route exact-resume evidence: docs/verification/real-vlm-exact-resume-20260821.md
 - real VLM custom-objective/attention/mixture/packing/video evidence:
   docs/verification/real-vlm-extension-routes-20260821.md
+- distributed architecture, dense/MoE and B200/Ascend boundaries:
+  docs/architecture/distributed-execution.md
+- seven-route medium-data loss and update evidence:
+  docs/verification/real-vlm-medium-data-20260822.md
 - one task / one run / one command: docs/usage/quickstart.md
 
 Basic command boundary:
@@ -70,8 +79,8 @@ launch/linux/trainomni.sh <trainomni arguments...>
 ~~~
 
 They never choose or install PyTorch, activate an environment, or own distributed
-topology. Distributed Windows/Linux adapters remain separate and unpublished until
-the corresponding Python runtime is executable and verified.
+topology. Separate distributed wrappers launch one-rank Windows probes or
+`torch.distributed.run` on Linux; RunSpec still owns backend/world-size semantics.
 
 Local modules are trusted Python and require explicit opt-in. They are loaded in a
 digest-derived namespace without changing sys.path; this is provenance and module
@@ -82,5 +91,7 @@ It contains CUDA Torch and is excluded from Git; launchers still require an expl
 `TRAINOMNI_PYTHON`, so a checkout never silently chooses an environment. Production
 dependency locking remains separate release work. Real-checkpoint single-GPU
 compatibility is now validated for the documented five-stage chain and its five
-fresh-process exact-resume routes; distributed execution remains a later gate.
+fresh-process exact-resume routes. Direct DDP and FSDP2 have real one-rank CUDA
+execution/checkpoint/resume evidence; actual multi-rank Linux/NCCL and
+Ascend/HCCL remain server gates.
 The pre-redesign implementation remains archived and is not part of this source tree.

@@ -5,7 +5,7 @@
     {
       "module": "model:validation/qwen35_vision_minicpm5@1",
       "path": "modules/qwen_minicpm_model",
-      "source_sha256": "06c859850e5d2ce98892b9ad07b1d51d0b574fae113ec8fbcd88033c4a5bd5d2"
+      "source_sha256": "5f0e261b78877aebcda2f468067b9fe7a6d91357c36c8aaa31171ec061b1f601"
     },
     {
       "module": "model_io:validation/qwen35_vision_minicpm5@1",
@@ -107,4 +107,3 @@
   },
   "exporters": [{"module": "exporter:trainomni/safetensors@1"}]
 }
-

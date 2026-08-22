@@ -1,0 +1,140 @@
+{
+  "data": {
+    "collator": {
+      "config": {
+        "field_modes": {
+          "image_counts": "concat",
+          "image_grid_thw": "concat",
+          "pixel_values": "concat"
+        },
+        "pad_token_id": 0
+      },
+      "module": "collator:trainomni/multimodal@1"
+    },
+    "model_io": {
+      "config": {
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "max_text_tokens": 64,
+        "mode": "sft",
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+      },
+      "module": "model_io:validation/qwen35_vision_minicpm5@1"
+    },
+    "packer": {
+      "module": "packer:trainomni/none@1"
+    },
+    "source": {
+      "config": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/intergps-train.jsonl",
+        "repeat": true,
+        "sha256": "fc9a1eb830c00da554e6e90e0fe080dd649862f6beddc5e94b62f8fa04b5ce56"
+      },
+      "module": "data_source:trainomni/jsonl@1"
+    },
+    "supervision": {
+      "module": "supervision:trainomni/causal_lm@1"
+    },
+    "transforms": []
+  },
+  "evaluation": {
+    "data": {
+      "collator": {
+        "config": {
+          "field_modes": {
+            "image_counts": "concat",
+            "image_grid_thw": "concat",
+            "pixel_values": "concat"
+          },
+          "pad_token_id": 0
+        },
+        "module": "collator:trainomni/multimodal@1"
+      },
+      "model_io": {
+        "config": {
+          "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+          "max_text_tokens": 64,
+          "mode": "sft",
+          "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+        },
+        "module": "model_io:validation/qwen35_vision_minicpm5@1"
+      },
+      "packer": {
+        "module": "packer:trainomni/none@1"
+      },
+      "source": {
+        "config": {
+          "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/intergps-validation.jsonl",
+          "repeat": true,
+          "sha256": "c322efa5ef3939010ade4218bf37523d7094ab466369abfb9da3973710f862b8"
+        },
+        "module": "data_source:trainomni/jsonl@1"
+      },
+      "supervision": {
+        "module": "supervision:trainomni/causal_lm@1"
+      },
+      "transforms": []
+    },
+    "evaluators": [
+      {
+        "config": {
+          "metric_name": "lora_sft_loss",
+          "term": "token_ce"
+        },
+        "module": "evaluator:trainomni/loss@1"
+      }
+    ]
+  },
+  "exporters": [
+    {
+      "module": "exporter:trainomni/lora_adapter@1"
+    }
+  ],
+  "local_modules": [
+    {
+      "module": "model:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_model",
+      "source_sha256": "5f0e261b78877aebcda2f468067b9fe7a6d91357c36c8aaa31171ec061b1f601"
+    },
+    {
+      "module": "model_io:validation/qwen35_vision_minicpm5@1",
+      "path": "modules/qwen_minicpm_io",
+      "source_sha256": "0c445ab7e64d208f78feffbcc20707e6450a3e2ffff09b8d761b0d6375ec4329"
+    }
+  ],
+  "model": {
+    "components": {},
+    "implementation": {
+      "config": {
+        "initial_artifact": "D:/Codex/TrainOmni/FrameworkValidation/artifacts/stage-04-kd",
+        "initial_artifact_sha256": "b76286a5eabdc8ec88e70d4a1267f458531d65b97635da211157abf1a4ac5a98",
+        "language_checkpoint": "D:/Models/LLM/MiniCPM5-1B",
+        "load_dtype": "bf16",
+        "vision_checkpoint": "D:/Models/VLM/Qwen3.5-0.8B"
+      },
+      "module": "model:validation/qwen35_vision_minicpm5@1"
+    }
+  },
+  "name": "real-vlm-medium-v1-lora-sft",
+  "objective": {
+    "module": "objective:trainomni/causal_lm@1"
+  },
+  "parameters": {
+    "config": {
+      "alpha": 8.0,
+      "dropout": 0.0,
+      "group_name": "lora",
+      "rank": 4,
+      "target_patterns": [
+        "connector\\.1",
+        "vision_encoder\\.blocks\\.[0-9]+\\.attn\\.(qkv|proj)",
+        "vision_encoder\\.blocks\\.[0-9]+\\.mlp\\.linear_fc(1|2)",
+        "vision_encoder\\.merger\\.linear_fc(1|2)",
+        "language_model\\.model\\.layers\\.[0-9]+\\.self_attn\\.(q_proj|k_proj|v_proj|o_proj)",
+        "language_model\\.model\\.layers\\.[0-9]+\\.mlp\\.(gate_proj|up_proj|down_proj)"
+      ],
+      "train_bias": false
+    },
+    "module": "parameter_policy:trainomni/lora_linear@1"
+  },
+  "schema_version": 1
+}

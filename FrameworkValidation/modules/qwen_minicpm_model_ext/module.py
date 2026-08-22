@@ -13,6 +13,7 @@ from typing import Any
 import torch
 from torch import nn
 from trainomni.core.capability import CapabilitySet
+from trainomni.contracts.distribution import DistributionHints
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 from trainomni.modules.export.safetensors.module import load_safetensors_artifact
@@ -57,6 +58,17 @@ class QwenVisionMiniCPMExtended(nn.Module):
         self.language_model.config.use_cache = False
         self.attention_policy = attention_policy
         self.attention_kernel = "eager"
+
+    def distribution_hints(self) -> DistributionHints:
+        return DistributionHints(
+            fsdp_units=(
+                *(f"vision_encoder.blocks.{index}" for index in range(len(self.vision_encoder.blocks))),
+                *(
+                    f"language_model.model.layers.{index}"
+                    for index in range(len(self.language_model.model.layers))
+                ),
+            )
+        )
 
     def set_attn_implementation(self, implementation: str) -> None:
         """Forward the runtime kernel choice to both upstream Transformer towers."""

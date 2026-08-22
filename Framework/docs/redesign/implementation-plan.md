@@ -64,10 +64,10 @@ cannot select a device, model, dataset, output path, or training behavior.
 Distributed process creation is a separate platform adapter below
 `launch/<platform>/distributed/`. Logical topology remains RunSpec semantics;
 host facts such as scheduler allocation, node rank and rendezvous endpoint are
-launcher inputs recorded in a launch receipt. No distributed script is exposed
-until its Python runtime and checkpoint contract are executable. This lets the
-current Windows validation and later Linux validation differ in shell and process
-mechanics without forking the framework API.
+launcher inputs recorded in a launch receipt. Windows now exposes only a
+certified one-rank probe; Linux exposes the upstream torchrun boundary, while real
+multi-rank acceptance remains a server gate. This lets Windows and Linux differ
+in shell and process mechanics without forking the framework API.
 
 ## 3. Module model
 
@@ -385,6 +385,11 @@ Deliverables:
 
 Exit: two-process tiny-VLM forward/backward/save/resume passes; then a real VLM
 smoke validates the same path. No unsupported parallel mode is advertised.
+
+Current status: direct DDP and FSDP2 plus portable state are implemented and
+real-VLM verified with a world-size-one CUDA process group. The required
+two-process/multi-host Linux gate remains pending; see
+`../architecture/distributed-execution.md`.
 
 ### Phase 10: consumer integration
 

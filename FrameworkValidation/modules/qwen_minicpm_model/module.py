@@ -12,6 +12,7 @@ import torch
 from torch import nn
 
 from trainomni.core.capability import CapabilitySet
+from trainomni.contracts.distribution import DistributionHints
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 from trainomni.modules.export.safetensors.module import load_safetensors_artifact
@@ -48,6 +49,17 @@ class QwenVisionMiniCPM(nn.Module):
         )
         self.language_model = language_model
         self.language_model.config.use_cache = False
+
+    def distribution_hints(self) -> DistributionHints:
+        return DistributionHints(
+            fsdp_units=(
+                *(f"vision_encoder.blocks.{index}" for index in range(len(self.vision_encoder.blocks))),
+                *(
+                    f"language_model.model.layers.{index}"
+                    for index in range(len(self.language_model.model.layers))
+                ),
+            )
+        )
 
     def _vision_features(
         self,
@@ -217,4 +229,3 @@ def descriptor() -> ModuleDescriptor:
             {"model.monolithic", "model.output.logits", "model.parameters"}
         ),
     )
-

@@ -12,8 +12,6 @@ from trainomni.catalog.local import registry_for_task
 from trainomni.core.errors import SpecError
 from trainomni.core.resolver import ModuleResolver
 from trainomni.runtime.loop.engine import StepMetrics, TrainEngine
-from trainomni.runtime.optimization.optimizer import build_optimizer
-from trainomni.runtime.optimization.scheduler import build_scheduler
 from trainomni.runtime.random import seed_everything
 from trainomni.specs.loading import load_run, load_task
 from trainomni.specs.run import CheckpointSpec
@@ -54,6 +52,7 @@ def load_resolved_run(run_path: str | Path):
             checkpoint=CheckpointSpec(
                 directory=(resolved_run_path.parent / run.checkpoint.directory).resolve(),
                 every_steps=run.checkpoint.every_steps,
+                enabled=run.checkpoint.enabled,
             ),
         )
     return run
@@ -61,25 +60,29 @@ def load_resolved_run(run_path: str | Path):
 
 def build_engine(*, task, assembly: TaskAssembly, run) -> TrainEngine:
     selection = assembly.parameter_selection
-    optimizer = build_optimizer(run.optimizer, selection)
-    scheduler = build_scheduler(run.scheduler, optimizer, total_steps=run.max_steps)
-    materialize_run_identity(
-        output_root=run.checkpoint.directory.parent,
-        task=task,
-        run=run,
-        module_lock=assembly.module_lock,
-        parameter_selection=selection,
-    )
-    return TrainEngine(
+    engine = TrainEngine(
         model=assembly.model,
         objective=assembly.objective,
-        optimizer=optimizer,
-        scheduler=scheduler,
+        parameter_selection=selection,
         stream=assembly.stream,
         run=run,
         task_digest=task.digest,
         module_lock=dict(assembly.module_lock),
     )
+    try:
+        if engine.process.is_primary:
+            materialize_run_identity(
+                output_root=run.checkpoint.directory.parent,
+                task=task,
+                run=run,
+                module_lock=assembly.module_lock,
+                parameter_selection=selection,
+            )
+        engine.process.barrier()
+    except Exception:
+        engine.close()
+        raise
+    return engine
 
 
 def train(
@@ -97,18 +100,21 @@ def train(
         allow_local_code=allow_local_code,
     )
     engine = build_engine(task=task, assembly=assembly, run=run)
-    if resume_from is not None:
-        engine.resume(Path(resume_from).resolve())
-    elif run.checkpoint.directory.exists() and any(
-        run.checkpoint.directory.glob("step-*")
-    ):
-        raise SpecError(
-            "checkpoint directory already contains steps; use --resume or a new output"
+    try:
+        if resume_from is not None:
+            engine.resume(Path(resume_from).resolve())
+        elif run.checkpoint.directory.exists() and any(
+            run.checkpoint.directory.glob("step-*")
+        ):
+            raise SpecError(
+                "checkpoint directory already contains steps; use --resume or a new output"
+            )
+        records = engine.train(stop_after_steps=stop_after_steps)
+        return TrainResult(
+            task_digest=task.digest,
+            run_digest=run.digest,
+            records=records,
+            final_step=engine.global_step,
         )
-    records = engine.train(stop_after_steps=stop_after_steps)
-    return TrainResult(
-        task_digest=task.digest,
-        run_digest=run.digest,
-        records=records,
-        final_step=engine.global_step,
-    )
+    finally:
+        engine.close()

@@ -10,12 +10,11 @@ from trainomni.assembly.task_builder import build_task
 from trainomni.catalog.builtin import builtin_registry
 from trainomni.contracts.batch import EncodedSample
 from trainomni.core.capability import CapabilitySet
+from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 from trainomni.core.resolver import ModuleResolver
 from trainomni.runtime.evaluation import evaluate_batches
 from trainomni.runtime.loop.engine import TrainEngine
-from trainomni.runtime.optimization.optimizer import build_optimizer
-from trainomni.runtime.optimization.scheduler import build_scheduler
 from trainomni.specs.run import RunSpec
 from trainomni.specs.task import TaskSpec
 
@@ -127,6 +126,7 @@ def make_engine(
     *,
     device: str = "cpu",
     precision: str = "fp32",
+    checkpoint_enabled: bool = True,
 ):
     run = RunSpec.from_mapping(
         {
@@ -140,22 +140,34 @@ def make_engine(
             "checkpoint": {
                 "directory": str(root),
                 "every_steps": 1,
+                "enabled": checkpoint_enabled,
             },
         }
     )
     selection = assembly.parameter_selection
-    optimizer = build_optimizer(run.optimizer, selection)
-    scheduler = build_scheduler(run.scheduler, optimizer, total_steps=run.max_steps)
     return TrainEngine(
         model=assembly.model,
         objective=assembly.objective,
-        optimizer=optimizer,
-        scheduler=scheduler,
+        parameter_selection=selection,
         stream=assembly.stream,
         run=run,
         task_digest=task.digest,
         module_lock=dict(assembly.module_lock),
     )
+
+
+def test_training_can_run_without_materializing_checkpoints(tmp_path: Path) -> None:
+    task = make_task()
+    assembly = build_task(task, ModuleResolver(make_registry()))
+    root = tmp_path / "checkpoints"
+    engine = make_engine(task, assembly, root, checkpoint_enabled=False)
+
+    records = engine.train()
+
+    assert [record.global_step for record in records] == [1, 2]
+    assert not root.exists()
+    with pytest.raises(SpecError, match="checkpointing is disabled"):
+        engine.save_checkpoint()
 
 
 def test_monolithic_model_uses_same_data_objective_and_runtime(tmp_path: Path) -> None:

@@ -264,22 +264,221 @@ class CompileSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class DDPSpec:
+    find_unused_parameters: bool = False
+    broadcast_buffers: bool = True
+    gradient_as_bucket_view: bool = True
+    static_graph: bool = False
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> DDPSpec:
+        allowed = {
+            "find_unused_parameters",
+            "broadcast_buffers",
+            "gradient_as_bucket_view",
+            "static_graph",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise SpecError(f"execution.ddp contains unknown keys: {', '.join(unknown)}")
+        values = {
+            name: value.get(name, default)
+            for name, default in {
+                "find_unused_parameters": False,
+                "broadcast_buffers": True,
+                "gradient_as_bucket_view": True,
+                "static_graph": False,
+            }.items()
+        }
+        if any(not isinstance(item, bool) for item in values.values()):
+            raise SpecError("execution.ddp options must be booleans")
+        if values["static_graph"] and values["find_unused_parameters"]:
+            raise SpecError(
+                "execution.ddp.static_graph cannot be combined with "
+                "find_unused_parameters"
+            )
+        return cls(**values)
+
+
+@dataclass(frozen=True, slots=True)
+class FSDP2Spec:
+    wrap_policy: str = "model_declared"
+    reshard_after_forward: bool = True
+    cpu_offload: bool = False
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> FSDP2Spec:
+        allowed = {"wrap_policy", "reshard_after_forward", "cpu_offload"}
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise SpecError(
+                f"execution.fsdp2 contains unknown keys: {', '.join(unknown)}"
+            )
+        wrap_policy = value.get("wrap_policy", "model_declared")
+        if wrap_policy not in {"model_declared", "root"}:
+            raise SpecError(
+                "execution.fsdp2.wrap_policy must be model_declared or root"
+            )
+        reshard = value.get("reshard_after_forward", True)
+        cpu_offload = value.get("cpu_offload", False)
+        if not isinstance(reshard, bool) or not isinstance(cpu_offload, bool):
+            raise SpecError(
+                "execution.fsdp2 reshard_after_forward/cpu_offload must be booleans"
+            )
+        return cls(str(wrap_policy), reshard, cpu_offload)
+
+
+@dataclass(frozen=True, slots=True)
+class DeepSpeedSpec:
+    zero_stage: int = 2
+    offload_optimizer: str = "none"
+    offload_parameters: str = "none"
+    overlap_comm: bool = True
+    contiguous_gradients: bool = True
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> DeepSpeedSpec:
+        allowed = {
+            "zero_stage",
+            "offload_optimizer",
+            "offload_parameters",
+            "overlap_comm",
+            "contiguous_gradients",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise SpecError(
+                f"execution.deepspeed contains unknown keys: {', '.join(unknown)}"
+            )
+        zero_stage = int(value.get("zero_stage", 2))
+        if zero_stage not in {0, 1, 2, 3}:
+            raise SpecError("execution.deepspeed.zero_stage must be 0, 1, 2, or 3")
+        offload_optimizer = value.get("offload_optimizer", "none")
+        offload_parameters = value.get("offload_parameters", "none")
+        for field, selected in (
+            ("offload_optimizer", offload_optimizer),
+            ("offload_parameters", offload_parameters),
+        ):
+            if selected not in {"none", "cpu"}:
+                raise SpecError(
+                    f"execution.deepspeed.{field} must be none or cpu"
+                )
+        if zero_stage != 3 and offload_parameters != "none":
+            raise SpecError(
+                "DeepSpeed parameter offload is only valid with ZeRO stage 3"
+            )
+        overlap_comm = value.get("overlap_comm", True)
+        contiguous_gradients = value.get("contiguous_gradients", True)
+        if not isinstance(overlap_comm, bool) or not isinstance(
+            contiguous_gradients, bool
+        ):
+            raise SpecError(
+                "execution.deepspeed overlap_comm/contiguous_gradients "
+                "must be booleans"
+            )
+        return cls(
+            zero_stage,
+            str(offload_optimizer),
+            str(offload_parameters),
+            overlap_comm,
+            contiguous_gradients,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionSpec:
+    backend: str = "single"
+    process_group_backend: str = "auto"
+    expected_world_size: int | None = None
+    timeout_seconds: int = 1800
+    ddp: DDPSpec = DDPSpec()
+    fsdp2: FSDP2Spec = FSDP2Spec()
+    deepspeed: DeepSpeedSpec = DeepSpeedSpec()
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> ExecutionSpec:
+        allowed = {
+            "backend",
+            "process_group_backend",
+            "expected_world_size",
+            "timeout_seconds",
+            "ddp",
+            "fsdp2",
+            "deepspeed",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise SpecError(f"execution contains unknown keys: {', '.join(unknown)}")
+        backend = value.get("backend", "single")
+        if backend not in {"single", "torch_ddp", "torch_fsdp2", "deepspeed"}:
+            raise SpecError(
+                "execution.backend must be single, torch_ddp, torch_fsdp2, "
+                "or deepspeed"
+            )
+        process_group_backend = value.get("process_group_backend", "auto")
+        if process_group_backend not in {"auto", "gloo", "nccl", "hccl"}:
+            raise SpecError(
+                "execution.process_group_backend must be auto, gloo, nccl, or hccl"
+            )
+        raw_world_size = value.get("expected_world_size")
+        expected_world_size = None if raw_world_size is None else int(raw_world_size)
+        if expected_world_size is not None and expected_world_size <= 0:
+            raise SpecError("execution.expected_world_size must be positive")
+        timeout_seconds = int(value.get("timeout_seconds", 1800))
+        if timeout_seconds <= 0:
+            raise SpecError("execution.timeout_seconds must be positive")
+        raw_children = {
+            name: value.get(name, {}) for name in ("ddp", "fsdp2", "deepspeed")
+        }
+        if any(not isinstance(child, Mapping) for child in raw_children.values()):
+            raise SpecError("execution backend options must be mappings")
+        active_child = {
+            "torch_ddp": "ddp",
+            "torch_fsdp2": "fsdp2",
+            "deepspeed": "deepspeed",
+        }.get(str(backend))
+        inactive_with_values = sorted(
+            name
+            for name, child in raw_children.items()
+            if child and name != active_child
+        )
+        if inactive_with_values:
+            raise SpecError(
+                "execution options were supplied for inactive backends: "
+                + ", ".join(inactive_with_values)
+            )
+        return cls(
+            backend=str(backend),
+            process_group_backend=str(process_group_backend),
+            expected_world_size=expected_world_size,
+            timeout_seconds=timeout_seconds,
+            ddp=DDPSpec.from_mapping(raw_children["ddp"]),
+            fsdp2=FSDP2Spec.from_mapping(raw_children["fsdp2"]),
+            deepspeed=DeepSpeedSpec.from_mapping(raw_children["deepspeed"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CheckpointSpec:
     directory: Path
     every_steps: int = 1
+    enabled: bool = True
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> CheckpointSpec:
-        unknown = sorted(set(value) - {"directory", "every_steps"})
+        unknown = sorted(set(value) - {"directory", "every_steps", "enabled"})
         if unknown:
             raise SpecError(f"checkpoint contains unknown keys: {', '.join(unknown)}")
         raw_directory = value.get("directory")
         if not isinstance(raw_directory, str) or not raw_directory:
             raise SpecError("checkpoint.directory must be a non-empty path string")
         every_steps = int(value.get("every_steps", 1))
+        enabled = value.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise SpecError("checkpoint.enabled must be a boolean")
         if every_steps <= 0:
             raise SpecError("checkpoint.every_steps must be positive")
-        return cls(Path(raw_directory), every_steps)
+        return cls(Path(raw_directory), every_steps, enabled)
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,6 +498,7 @@ class RunSpec:
     scheduler: SchedulerSpec
     activation_checkpointing: ActivationCheckpointSpec
     compile: CompileSpec
+    execution: ExecutionSpec
     update_evidence: UpdateEvidenceSpec
     checkpoint: CheckpointSpec
 
@@ -320,6 +520,7 @@ class RunSpec:
             "scheduler",
             "activation_checkpointing",
             "compile",
+            "execution",
             "update_evidence",
             "checkpoint",
         }
@@ -357,6 +558,7 @@ class RunSpec:
         raw_scheduler = value.get("scheduler", {})
         raw_activation_checkpointing = value.get("activation_checkpointing", {})
         raw_compile = value.get("compile", {})
+        raw_execution = value.get("execution", {})
         raw_update_evidence = value.get("update_evidence", {})
         raw_checkpoint = value.get("checkpoint")
         if not isinstance(raw_optimizer, Mapping):
@@ -367,6 +569,8 @@ class RunSpec:
             raise SpecError("run.activation_checkpointing must be a mapping")
         if not isinstance(raw_compile, Mapping):
             raise SpecError("run.compile must be a mapping")
+        if not isinstance(raw_execution, Mapping):
+            raise SpecError("run.execution must be a mapping")
         if not isinstance(raw_update_evidence, Mapping):
             raise SpecError("run.update_evidence must be a mapping")
         if not isinstance(raw_checkpoint, Mapping):
@@ -399,6 +603,7 @@ class RunSpec:
                 raw_activation_checkpointing
             ),
             compile=CompileSpec.from_mapping(raw_compile),
+            execution=ExecutionSpec.from_mapping(raw_execution),
             update_evidence=UpdateEvidenceSpec.from_mapping(raw_update_evidence),
             checkpoint=CheckpointSpec.from_mapping(raw_checkpoint),
         )

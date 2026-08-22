@@ -1,0 +1,50 @@
+{
+  "activation_checkpointing": {
+    "components": [
+      "vision_encoder",
+      "language_model"
+    ],
+    "enabled": true,
+    "use_reentrant": false
+  },
+  "attention_kernel": "sdpa",
+  "checkpoint": {
+    "directory": "D:/Codex/TrainOmni/FrameworkValidation/medium-validation/runs/lora_dpo/checkpoints",
+    "enabled": false,
+    "every_steps": 16
+  },
+  "compile": {
+    "enabled": false
+  },
+  "deterministic": false,
+  "device": "cuda:0",
+  "execution": {
+    "backend": "single",
+    "expected_world_size": 1
+  },
+  "gradient_accumulation_steps": 1,
+  "max_grad_norm": 1.0,
+  "max_steps": 16,
+  "name": "real-vlm-medium-v1-lora-dpo",
+  "optimizer": {
+    "foreach": false,
+    "learning_rate": 0.001,
+    "name": "adamw",
+    "weight_decay": 0.0
+  },
+  "per_device_batch_size": 1,
+  "precision": "bf16_true",
+  "scheduler": {
+    "name": "constant"
+  },
+  "schema_version": 1,
+  "seed": 26082226,
+  "update_evidence": {
+    "enabled": true,
+    "every_steps": 4,
+    "required_groups": [
+      "lora"
+    ],
+    "sample_elements_per_group": 8192
+  }
+}

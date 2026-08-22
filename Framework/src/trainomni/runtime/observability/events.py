@@ -17,3 +17,10 @@ class JsonlEventWriter:
         record = {"event": event, **payload}
         with self.path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
+
+
+class NullEventWriter:
+    """Non-primary rank sink with the same narrow event interface."""
+
+    def write(self, event: str, payload: Mapping[str, Any]) -> None:
+        del event, payload

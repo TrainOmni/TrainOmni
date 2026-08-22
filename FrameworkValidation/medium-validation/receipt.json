@@ -1,0 +1,1186 @@
+{
+  "claim_boundary": "Single-GPU engineering validation over varied medium fixtures; loss observations are not model-quality claims.",
+  "config_manifest_sha256": "3df7895de3897e9380cb26fa4eea402e68455780254b520b3203c428b74549f8",
+  "dataset_manifest_sha256": "8eb92e52fa20f0d583bbff12e7c786cfcfd8ddb9ff8a43e2d43a72d8237fe8ae",
+  "routes": {
+    "alignment": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 3298706432,
+        "max_reserved_bytes": 3823108096
+      },
+      "grad_norm": {
+        "maximum": 204.0,
+        "mean": 22.197265625,
+        "minimum": 1.3203125
+      },
+      "loss": {
+        "first": 7.298628807067871,
+        "first_4_mean": 5.246426701545715,
+        "last": 3.6708126068115234,
+        "last_4_mean": 4.148723602294922,
+        "last_vs_first_4_fraction": -0.2092287115966731,
+        "least_squares_slope_per_step": -0.12857929292847128,
+        "maximum": 7.298628807067871,
+        "minimum": 2.9840736389160156,
+        "values": [
+          7.298628807067871,
+          4.948378562927246,
+          4.423805236816406,
+          4.314894199371338,
+          4.288846969604492,
+          5.520875453948975,
+          5.232359409332275,
+          5.147768497467041,
+          4.84712028503418,
+          3.2915189266204834,
+          2.9840736389160156,
+          4.137284755706787,
+          5.415279388427734,
+          3.8378405570983887,
+          3.670961856842041,
+          3.6708126068115234
+        ]
+      },
+      "loss_terms": {
+        "token_ce": {
+          "first": 7.2986285869891825,
+          "first_4_mean": 5.246426649942297,
+          "last": 3.6708125361689814,
+          "last_4_mean": 4.1487236216968135,
+          "last_vs_first_4_fraction": -0.20922870012059666,
+          "least_squares_slope_per_step": -0.12857928999012597,
+          "maximum": 7.2986285869891825,
+          "minimum": 2.9840736389160156,
+          "values": [
+            7.2986285869891825,
+            4.9483783428485575,
+            4.423805386412377,
+            4.314894283519072,
+            4.288847116323618,
+            5.520875244140625,
+            5.232359452681108,
+            5.14776846078726,
+            4.847120098039215,
+            3.2915188598632814,
+            2.9840736389160156,
+            4.137284545898438,
+            5.415279554284138,
+            3.837840576171875,
+            3.6709618201622596,
+            3.6708125361689814
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/alignment.run.json",
+      "run_digest": "5cd967ff76b67bcaa1171171a654e110dc120a12f048424eb59d4468f3d4de36",
+      "run_file_sha256": "8f573bcb030d4d9d519e62389104633ae9c6c0302fc78e40a236855902216387",
+      "steps": 16,
+      "task": "medium-alignment.task.json",
+      "task_digest": "8c8d104984f338b547eb5f69b6dd12788e93502a4d59c6923d00cdf9afc9ea1e",
+      "task_file_sha256": "8ef121df3ce353f2eef26c9610f2e1d9d551e3be9957f588c904e482e3d9ee07",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/diagram-train.jsonl",
+        "repeat": true,
+        "sha256": "796aa303a07651c97fa54d8cdf0a9f623d3ee8de16ef23a7a5bad538b65484b7"
+      },
+      "update_evidence": {
+        "12": {
+          "connector": {
+            "after_sha256": "c56818580fd4d9466722b911886548b581bd3551c8dc77dd8b937a3768668265",
+            "before_sha256": "bdf7f47cec66c6bd0bf01c030f846366e785155020c400ba3c96ce0096f47e76",
+            "changed_sampled_elements": 2886,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0042624473571777,
+            "max_abs_sampled_update": 0.00091552734375,
+            "sampled_elements": 4096
+          }
+        },
+        "16": {
+          "connector": {
+            "after_sha256": "61ee811895fa3009506c6e0792fa27825e275318622af54c68009f79d7776275",
+            "before_sha256": "6c6429195ee9d8e3881b52dfb1ba358377175f7df3ed20ca3af66701b3c936fc",
+            "changed_sampled_elements": 2832,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.9987335205078125,
+            "max_abs_sampled_update": 0.0008544921875,
+            "sampled_elements": 4096
+          }
+        },
+        "4": {
+          "connector": {
+            "after_sha256": "adba8b42d43b781e48a95f718dee04279ec9548a820c2786b7178667f921af64",
+            "before_sha256": "a34c69841f0930d1f218caf7d822913f12fa5694c1154eb6be9236528a682345",
+            "changed_sampled_elements": 2986,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0017733573913574,
+            "max_abs_sampled_update": 0.0010986328125,
+            "sampled_elements": 4096
+          }
+        },
+        "8": {
+          "connector": {
+            "after_sha256": "85394002c734e85379b8332ab48c422dba945fbc7242ad8b85e68d69b0da7ea8",
+            "before_sha256": "25e5bd3555b92286a2ab9b76edd52bcf3614b946e06ebfb82635ea9adc4b2a62",
+            "changed_sampled_elements": 2905,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.002927541732788,
+            "max_abs_sampled_update": 0.0009765625,
+            "sampled_elements": 4096
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/diagram-validation.jsonl",
+        "repeat": true,
+        "sha256": "c9b159e4660af92954ea1ac3f222a622e179c7a5e49eb70a4495cfde80005b34"
+      }
+    },
+    "full_sft": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 11277444096,
+        "max_reserved_bytes": 12650020864
+      },
+      "grad_norm": {
+        "maximum": 2384.0,
+        "mean": 583.046875,
+        "minimum": 32.25
+      },
+      "loss": {
+        "first": 13.60385799407959,
+        "first_4_mean": 8.199459791183472,
+        "last": 0.48738542199134827,
+        "last_4_mean": 0.9728643670678139,
+        "last_vs_first_4_fraction": -0.8813501874704119,
+        "least_squares_slope_per_step": -0.6108350917258684,
+        "maximum": 13.60385799407959,
+        "minimum": 0.48738542199134827,
+        "values": [
+          13.60385799407959,
+          8.258251190185547,
+          6.304435729980469,
+          4.631294250488281,
+          3.1277732849121094,
+          8.085994720458984,
+          7.229397296905518,
+          3.4089057445526123,
+          7.897419452667236,
+          4.043255805969238,
+          3.8566575050354004,
+          1.6916630268096924,
+          1.4646146297454834,
+          1.1790882349014282,
+          0.7603691816329956,
+          0.48738542199134827
+        ]
+      },
+      "loss_terms": {
+        "token_ce": {
+          "first": 13.60385799407959,
+          "first_4_mean": 8.199459791183472,
+          "last": 0.48738542199134827,
+          "last_4_mean": 0.9728643670678139,
+          "last_vs_first_4_fraction": -0.8813501874704119,
+          "least_squares_slope_per_step": -0.6108350917258684,
+          "maximum": 13.60385799407959,
+          "minimum": 0.48738542199134827,
+          "values": [
+            13.60385799407959,
+            8.258251190185547,
+            6.304435729980469,
+            4.631294250488281,
+            3.1277732849121094,
+            8.085994720458984,
+            7.229397296905518,
+            3.4089057445526123,
+            7.897419452667236,
+            4.043255805969238,
+            3.8566575050354004,
+            1.6916630268096924,
+            1.4646146297454834,
+            1.1790882349014282,
+            0.7603691816329956,
+            0.48738542199134827
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/full_sft.run.json",
+      "run_digest": "378b5a3fc0f25067635887afb9a2233c5c3a077b36734efbc07a242a63dd69e6",
+      "run_file_sha256": "a9af6372ea841518af0238710b7e26ec473b18f230ff98ec8ed8cb15a000ea9d",
+      "steps": 16,
+      "task": "medium-full_sft.task.json",
+      "task_digest": "65a8bd82a79c83d1256c1a999cfdc1aaca545ded8db2519a308d982447aadc93",
+      "task_file_sha256": "1b8bace8916ed82513e31ef5a9d9ee49b30915bcad79760e696348b7fccf8568",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/intergps-train.jsonl",
+        "repeat": true,
+        "sha256": "fc9a1eb830c00da554e6e90e0fe080dd649862f6beddc5e94b62f8fa04b5ce56"
+      },
+      "update_evidence": {
+        "12": {
+          "connector": {
+            "after_sha256": "61e43fdc04f7254ba85f7c4bfb686dceb62c48d4dacd30cc34af58ec1dd4aab1",
+            "before_sha256": "e23557f5655a36a42df8043984cfb0d53a606243fbeb3e7d68343efe3d8e90fe",
+            "changed_sampled_elements": 2329,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.04824802652001381,
+            "max_abs_sampled_update": 0.000244140625,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "2c0e37b38e4aab58315db2c6a900595c761418b36ca0ff05c58318339ae82bfc",
+            "before_sha256": "57fa84baf5b149ab98e61a05ebad6888d8bf809afc27400f03bf9794f66df750",
+            "changed_sampled_elements": 568,
+            "changed_tensor_count": 170,
+            "gradient_norm": 0.9934090375900269,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "4ef2b024db4dc3ca4537147efa1385ad1e2427c83f4b627d18d8490cb340eb68",
+            "before_sha256": "8cd3b31c60b4908002ce56de749d3f868731087b75c143ded4e253949757ca7d",
+            "changed_sampled_elements": 518,
+            "changed_tensor_count": 123,
+            "gradient_norm": 0.09312320500612259,
+            "max_abs_sampled_update": 7.62939453125e-05,
+            "sampled_elements": 3978
+          }
+        },
+        "16": {
+          "connector": {
+            "after_sha256": "dccce176965c12d3f94c144f604af06a7f3b4d0bdcb9232702e28e966340693d",
+            "before_sha256": "f847d2099a8d87cfd3f89d663865016d348e9659be94137ee7a9f470d54de4ab",
+            "changed_sampled_elements": 2017,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.010127754881978035,
+            "max_abs_sampled_update": 0.000244140625,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "4b3a9fd97d2412792411654bbb95922bb55fa81889a8d3c6c067abfbcc2f1f6a",
+            "before_sha256": "ebe42e29867338218a4a3b069eb4dc6146101b8910ef01d2e583ff0d76ec8f06",
+            "changed_sampled_elements": 489,
+            "changed_tensor_count": 170,
+            "gradient_norm": 1.0021940469741821,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "604fdf27af6293d963cd82e371f60dbc4591645abed655501c0a6cad35d17efd",
+            "before_sha256": "da642685a313b25c1082985ae3c62b2d194d65a3c53abb04cad8c29885f21a62",
+            "changed_sampled_elements": 370,
+            "changed_tensor_count": 121,
+            "gradient_norm": 0.017842764034867287,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3978
+          }
+        },
+        "4": {
+          "connector": {
+            "after_sha256": "ff0e2436555b2a9dfd89ff2935fc99797fe888cc82fb7bbce2d95d5382dc8099",
+            "before_sha256": "2f7e20718ab2703af4b33757a43bacf74efdff3134ccc18d8410b01213b34d11",
+            "changed_sampled_elements": 2729,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.2013775259256363,
+            "max_abs_sampled_update": 0.00030517578125,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "32e6a067a3182c5b7934e2f3c8cb96a131b5537b69675fc797592d4988153e98",
+            "before_sha256": "8df6f2d5a023290f6180341c634c5e772e7b6443ca7dd5407bc8ec61e358b781",
+            "changed_sampled_elements": 1041,
+            "changed_tensor_count": 172,
+            "gradient_norm": 0.6168164610862732,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "0acfa1494741242c5a54e9d2459841a965ecf534f3656686bc451bc94b514750",
+            "before_sha256": "e76c6d4d8542b60aebd242aa871dd9692cad39a1dcf67d65bc9c8a08af8c16f6",
+            "changed_sampled_elements": 1014,
+            "changed_tensor_count": 127,
+            "gradient_norm": 0.7578779458999634,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3978
+          }
+        },
+        "8": {
+          "connector": {
+            "after_sha256": "298dca6923008bbfb4971c212941fa5b263c8aa1f0d52fcd3540b0b9f0249815",
+            "before_sha256": "7a8dc8fec783ba015c0144fdfc52302338b715a7f1e92aba723076933cba86a3",
+            "changed_sampled_elements": 2479,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.12046493589878082,
+            "max_abs_sampled_update": 0.000274658203125,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "06161652caa42375bb2b8dc2fa016c2445507b2d0b70fb903a378d85df458b64",
+            "before_sha256": "2484b0934960d36f0d0342bfc483ce8ab27d522e51d3ae8adf9e418af4dbefc5",
+            "changed_sampled_elements": 722,
+            "changed_tensor_count": 170,
+            "gradient_norm": 0.8571063876152039,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "94bcb293eb42a9557fc99ae2aeabaa2b79398be56e73528edd95d62b3e4d3680",
+            "before_sha256": "361eeeecf9e9336e02abbf98dae0c49bd07c2f7db35cdb832a249a54bb506258",
+            "changed_sampled_elements": 722,
+            "changed_tensor_count": 125,
+            "gradient_norm": 0.49336403608322144,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3978
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/intergps-validation.jsonl",
+        "repeat": true,
+        "sha256": "c322efa5ef3939010ade4218bf37523d7094ab466369abfb9da3973710f862b8"
+      }
+    },
+    "lora_dpo": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 2693346304,
+        "max_reserved_bytes": 3093299200
+      },
+      "grad_norm": {
+        "maximum": 75.5,
+        "mean": 10.9228515625,
+        "minimum": 0.294921875
+      },
+      "loss": {
+        "first": 0.6411834359169006,
+        "first_4_mean": 0.6610205620527267,
+        "last": 0.7745881676673889,
+        "last_4_mean": 0.7365400418639183,
+        "last_vs_first_4_fraction": 0.11424679374068805,
+        "least_squares_slope_per_step": 0.008902494565528982,
+        "maximum": 1.2937182188034058,
+        "minimum": 0.21594980359077454,
+        "values": [
+          0.6411834359169006,
+          0.8661494255065918,
+          0.6852390170097351,
+          0.45151036977767944,
+          0.7023047208786011,
+          0.5854858160018921,
+          0.6550873517990112,
+          0.6939470767974854,
+          0.7571372985839844,
+          0.6394567489624023,
+          1.1914747953414917,
+          0.5189656615257263,
+          0.661903977394104,
+          0.21594980359077454,
+          1.2937182188034058,
+          0.7745881676673889
+        ]
+      },
+      "loss_terms": {
+        "dpo": {
+          "first": 0.6411834359169006,
+          "first_4_mean": 0.6610205620527267,
+          "last": 0.7745881676673889,
+          "last_4_mean": 0.7365400418639183,
+          "last_vs_first_4_fraction": 0.11424679374068805,
+          "least_squares_slope_per_step": 0.008902494565528982,
+          "maximum": 1.2937182188034058,
+          "minimum": 0.21594980359077454,
+          "values": [
+            0.6411834359169006,
+            0.8661494255065918,
+            0.6852390170097351,
+            0.45151036977767944,
+            0.7023047208786011,
+            0.5854858160018921,
+            0.6550873517990112,
+            0.6939470767974854,
+            0.7571372985839844,
+            0.6394567489624023,
+            1.1914747953414917,
+            0.5189656615257263,
+            0.661903977394104,
+            0.21594980359077454,
+            1.2937182188034058,
+            0.7745881676673889
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/lora_dpo.run.json",
+      "run_digest": "0bef464cc92d12009aaebdf0850661b5951077231536589b334da02470e6afb3",
+      "run_file_sha256": "8caee9578455121eda907eea97c5dfa23998a828504a777e3bc2d40369dbb61e",
+      "steps": 16,
+      "task": "medium-lora_dpo.task.json",
+      "task_digest": "bfe447050ef494121ecd31996009b330fc600e7db311130dd2535e7de3f76b5b",
+      "task_file_sha256": "94b988362f1764e894e18501c1ad8a0eb8e1fbcd81d829d14314b4d6a8aadfd8",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/dpo-train.jsonl",
+        "repeat": true,
+        "sha256": "6633e32d21572223cd7e10a92e3cb15c5aec072c7ef74d5881c32e2f2191c03b"
+      },
+      "update_evidence": {
+        "12": {
+          "lora": {
+            "after_sha256": "fc8e8331ed0e598554ef41703ada578c96f14d34cb177a204fc4b9624a79cdc9",
+            "before_sha256": "d43c2fb4c87d8b2141983bc61f6730c265a94ef9ec5af83e3b1fc7ebfbc6e684",
+            "changed_sampled_elements": 7226,
+            "changed_tensor_count": 438,
+            "gradient_norm": 1.0024923086166382,
+            "max_abs_sampled_update": 0.0008544921875,
+            "sampled_elements": 7884
+          }
+        },
+        "16": {
+          "lora": {
+            "after_sha256": "a47b36019c4e0822ed82b06852a3ce51bc322b97a7b8ab408f1350463a0459c9",
+            "before_sha256": "164b28193e2ecf0c8278b70d1ddc00fe827c17493fd25648ddc9e6a6f14fd680",
+            "changed_sampled_elements": 7156,
+            "changed_tensor_count": 438,
+            "gradient_norm": 0.9975352883338928,
+            "max_abs_sampled_update": 0.0008697509765625,
+            "sampled_elements": 7884
+          }
+        },
+        "4": {
+          "lora": {
+            "after_sha256": "9c892bd6cb4b304b2d9ea564e8a58316d7c8b4f522cb122507b210c9d5444408",
+            "before_sha256": "fdefc5d42e3e310af0baab046d3c5dc53cff4325c034939eb22d12121eceed06",
+            "changed_sampled_elements": 7735,
+            "changed_tensor_count": 438,
+            "gradient_norm": 0.29459521174430847,
+            "max_abs_sampled_update": 0.001007080078125,
+            "sampled_elements": 7884
+          }
+        },
+        "8": {
+          "lora": {
+            "after_sha256": "ae93c3d81ba3132f97c3c0b1c70faaa8b2a2eceff3d3292c14d7861cbf4a3525",
+            "before_sha256": "284b3c54845bc2d5a950cef84224629d0267b3a61710815b7669017aec008703",
+            "changed_sampled_elements": 7614,
+            "changed_tensor_count": 438,
+            "gradient_norm": 1.001883864402771,
+            "max_abs_sampled_update": 0.00091552734375,
+            "sampled_elements": 7884
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/dpo-validation.jsonl",
+        "repeat": true,
+        "sha256": "e21d90dd12bec3a407eb79baa92ed7b2b118b49dc0d37a69d5cf74c9d556d1ff"
+      }
+    },
+    "lora_sft": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 2640113664,
+        "max_reserved_bytes": 3120562176
+      },
+      "grad_norm": {
+        "maximum": 228.0,
+        "mean": 32.76171875,
+        "minimum": 5.4375
+      },
+      "loss": {
+        "first": 8.100849151611328,
+        "first_4_mean": 8.12609314918518,
+        "last": 1.4026037454605103,
+        "last_4_mean": 1.5759947299957275,
+        "last_vs_first_4_fraction": -0.8060575111480532,
+        "least_squares_slope_per_step": -0.5407991461894092,
+        "maximum": 9.626815795898438,
+        "minimum": 1.4026037454605103,
+        "values": [
+          8.100849151611328,
+          9.626815795898438,
+          7.6095991134643555,
+          7.167108535766602,
+          6.815982818603516,
+          6.209909915924072,
+          5.431307792663574,
+          5.243346214294434,
+          5.107606887817383,
+          4.078437328338623,
+          3.1875336170196533,
+          2.7202844619750977,
+          1.6551432609558105,
+          1.5163747072219849,
+          1.7298572063446045,
+          1.4026037454605103
+        ]
+      },
+      "loss_terms": {
+        "token_ce": {
+          "first": 8.100849151611328,
+          "first_4_mean": 8.12609314918518,
+          "last": 1.4026037454605103,
+          "last_4_mean": 1.5759947299957275,
+          "last_vs_first_4_fraction": -0.8060575111480532,
+          "least_squares_slope_per_step": -0.5407991461894092,
+          "maximum": 9.626815795898438,
+          "minimum": 1.4026037454605103,
+          "values": [
+            8.100849151611328,
+            9.626815795898438,
+            7.6095991134643555,
+            7.167108535766602,
+            6.815982818603516,
+            6.209909915924072,
+            5.431307792663574,
+            5.243346214294434,
+            5.107606887817383,
+            4.078437328338623,
+            3.1875336170196533,
+            2.7202844619750977,
+            1.6551432609558105,
+            1.5163747072219849,
+            1.7298572063446045,
+            1.4026037454605103
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/lora_sft.run.json",
+      "run_digest": "c2e03274bd4f8f18d432849823745d9f670caae78807eb59b1d3c4104337ae7b",
+      "run_file_sha256": "0614f24ef4dba7ac9f33b35d5141c1fe44314f542a5f9099f69c99ea97e24fe7",
+      "steps": 16,
+      "task": "medium-lora_sft.task.json",
+      "task_digest": "8c06ec0f45e9ca3f660e58a6a192bcfe2785c64243f841f773258f2ef0aa4343",
+      "task_file_sha256": "f4afb9a39de461ef67fae917211c8f8106ecda24110b428a4f06a5c8a4f4a455",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/intergps-train.jsonl",
+        "repeat": true,
+        "sha256": "fc9a1eb830c00da554e6e90e0fe080dd649862f6beddc5e94b62f8fa04b5ce56"
+      },
+      "update_evidence": {
+        "12": {
+          "lora": {
+            "after_sha256": "6ed871383222de5cda67078e86aa83c8349d7eb35a4902c0c9b0d37e3faa5694",
+            "before_sha256": "8246a2ba32a3225491aeee36c6f46bd6fe614286748c8ee8254257fc3d05c83c",
+            "changed_sampled_elements": 7384,
+            "changed_tensor_count": 438,
+            "gradient_norm": 0.9995224475860596,
+            "max_abs_sampled_update": 0.000946044921875,
+            "sampled_elements": 7884
+          }
+        },
+        "16": {
+          "lora": {
+            "after_sha256": "a6d9a89ffa5350cf2e2cef7cf6475c84ebef3a704a2c1be2d0d5be25020ed5fd",
+            "before_sha256": "da95e069b07f243a19dd80823b0d978c6a0ae3386488c600628f7de9ff8cd88c",
+            "changed_sampled_elements": 7273,
+            "changed_tensor_count": 438,
+            "gradient_norm": 1.0037956237792969,
+            "max_abs_sampled_update": 0.0009765625,
+            "sampled_elements": 7884
+          }
+        },
+        "4": {
+          "lora": {
+            "after_sha256": "ef06606b4f942ee0d8b9919d214efb01eb8d353a213585bb9a8625145095555d",
+            "before_sha256": "faa8e2a0da3d3ed5b8e5a4eb77c5353bbe98e8020d2d4d1c6d3f61f272203bab",
+            "changed_sampled_elements": 7760,
+            "changed_tensor_count": 438,
+            "gradient_norm": 1.0000418424606323,
+            "max_abs_sampled_update": 0.001007080078125,
+            "sampled_elements": 7884
+          }
+        },
+        "8": {
+          "lora": {
+            "after_sha256": "e65008c3b416df543b02432581fd9473651e264b99175503a939b58154bb23a8",
+            "before_sha256": "d674abbc01000b3f61d3b64f9aa90ce5461e64993c9dcd55d97b850f46251e23",
+            "changed_sampled_elements": 7632,
+            "changed_tensor_count": 438,
+            "gradient_norm": 1.001308798789978,
+            "max_abs_sampled_update": 0.0009765625,
+            "sampled_elements": 7884
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/intergps-validation.jsonl",
+        "repeat": true,
+        "sha256": "c322efa5ef3939010ade4218bf37523d7094ab466369abfb9da3973710f862b8"
+      }
+    },
+    "multimodal_cpt": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 11274085376,
+        "max_reserved_bytes": 12656312320
+      },
+      "grad_norm": {
+        "maximum": 2528.0,
+        "mean": 327.90625,
+        "minimum": 32.5
+      },
+      "loss": {
+        "first": 8.323728561401367,
+        "first_4_mean": 6.388033986091614,
+        "last": 3.527533531188965,
+        "last_4_mean": 4.523720026016235,
+        "last_vs_first_4_fraction": -0.29184471531217077,
+        "least_squares_slope_per_step": -0.24573733631302327,
+        "maximum": 10.684758186340332,
+        "minimum": 2.79672908782959,
+        "values": [
+          8.323728561401367,
+          4.016637802124023,
+          5.986938953399658,
+          7.224830627441406,
+          10.684758186340332,
+          7.933239936828613,
+          6.73465633392334,
+          5.981801986694336,
+          4.966419219970703,
+          3.750288724899292,
+          2.79672908782959,
+          5.979125499725342,
+          5.9817352294921875,
+          4.460231781005859,
+          4.12537956237793,
+          3.527533531188965
+        ]
+      },
+      "loss_terms": {
+        "token_ce": {
+          "first": 8.32372812124399,
+          "first_4_mean": 6.3880339431187325,
+          "last": 3.5275336371527777,
+          "last_4_mean": 4.5237201273339425,
+          "last_vs_first_4_fraction": -0.29184469468780005,
+          "least_squares_slope_per_step": -0.24573732198646706,
+          "maximum": 10.68475811298077,
+          "minimum": 2.7967291332426525,
+          "values": [
+            8.32372812124399,
+            4.016637948843149,
+            5.986939074946385,
+            7.224830627441406,
+            10.68475811298077,
+            7.93323974609375,
+            6.734656131628788,
+            5.981802133413462,
+            4.966419294768689,
+            3.7502886962890627,
+            2.7967291332426525,
+            5.979125366210938,
+            5.9817352294921875,
+            4.46023193359375,
+            4.125379709097055,
+            3.5275336371527777
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/multimodal_cpt.run.json",
+      "run_digest": "b377d2381531160defb85aed0202a9f6e8b30fbadb14ea7a57e16447faf0529f",
+      "run_file_sha256": "735400a02d4e0263be55bf2301b0d72c16acf6c414bab09fae0aae8472f417bc",
+      "steps": 16,
+      "task": "medium-multimodal_cpt.task.json",
+      "task_digest": "5fc78367e8a37106bab6e85d36ea8c8c80debb58daf55ad290395c3dd0bc77ea",
+      "task_file_sha256": "8431c464dd68e243e4f6450e75daf95d5f69b08e8f652bcc92edfe23b61c2057",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/diagram-train.jsonl",
+        "repeat": true,
+        "sha256": "796aa303a07651c97fa54d8cdf0a9f623d3ee8de16ef23a7a5bad538b65484b7"
+      },
+      "update_evidence": {
+        "12": {
+          "connector": {
+            "after_sha256": "02003b531c5d962b4100c0da34abbb35eafcb25ac7ef8b97de147e5db61d6bb7",
+            "before_sha256": "b3c789c309430df8c29aa694418be07fb02bd32ba0ad4516cb68555ac20b69c8",
+            "changed_sampled_elements": 2340,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.2416682094335556,
+            "max_abs_sampled_update": 0.000244140625,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "03c7b40db1ee83b366fa30cbcbc3f999bbe2e82b97d54dcb621d6e418cbb0945",
+            "before_sha256": "7dcc995836dcffc97d6f32d52f8f7fe6a3e94d8e00ac140c717dfc2484964d4f",
+            "changed_sampled_elements": 663,
+            "changed_tensor_count": 171,
+            "gradient_norm": 0.8908450603485107,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "4958072e3e536dbde13eae9d9ecf05936f4e38b11d80bb01f30c024e4f5b984f",
+            "before_sha256": "c1fb82dc5925135f31683c2580ae411ba21afbbc9b62427cb568b134ff90585e",
+            "changed_sampled_elements": 550,
+            "changed_tensor_count": 121,
+            "gradient_norm": 0.3960510790348053,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3978
+          }
+        },
+        "16": {
+          "connector": {
+            "after_sha256": "ca79b67b9a2264eefe0fbdd1429e96fa948f892edeb0f203a36e68f77fddd86a",
+            "before_sha256": "cad02776909e7213e236cb5badaaaa254e715dea6e6c660db2c914be57feed4b",
+            "changed_sampled_elements": 2128,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.02156767062842846,
+            "max_abs_sampled_update": 0.000244140625,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "9fd90eaa0b2f45ee1f783b278f5f6dffa27b485c78027452f1d12591e5a69068",
+            "before_sha256": "a84196c9b4645ceba7cdaccd2df56a3dbe76e710c93ac233f351c1703c199491",
+            "changed_sampled_elements": 630,
+            "changed_tensor_count": 170,
+            "gradient_norm": 1.0013729333877563,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "6c5451f1e2bcd6feef014d0c7849df68b94a7d2b43bd79695bde20095d1f7158",
+            "before_sha256": "de379c5097e0375c9c1a5b48fd8c8de0676a85b579e663b2dd2dc22dbdbca0c4",
+            "changed_sampled_elements": 425,
+            "changed_tensor_count": 121,
+            "gradient_norm": 0.050443217158317566,
+            "max_abs_sampled_update": 6.103515625e-05,
+            "sampled_elements": 3978
+          }
+        },
+        "4": {
+          "connector": {
+            "after_sha256": "dcc2a39552dc8e350fe08d06ebd86debad697a2916b1bb1a4d5a30b674ae9adc",
+            "before_sha256": "14db1a8f364abc25c385a98f951d81633bb0ca4063cde15823e3c722ff06af42",
+            "changed_sampled_elements": 2754,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.14471600949764252,
+            "max_abs_sampled_update": 0.0003662109375,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "53bcfa4f86b5ffe0352b429b589a24a8575090783390c57903f186079af42c6f",
+            "before_sha256": "d56ecc7fcabd538de6cd6a5bd03971921a83a1335fd151fca84026747f0629d4",
+            "changed_sampled_elements": 963,
+            "changed_tensor_count": 171,
+            "gradient_norm": 0.6793365478515625,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "cb6fa433221bd3066d15a2cd9ef1723cc4498be133f9ed5291c4cbb6e2b787ce",
+            "before_sha256": "b9356245d9d012b22c7455dc327d5730e927afdb3b62c2a90b5518967aa933e5",
+            "changed_sampled_elements": 1006,
+            "changed_tensor_count": 127,
+            "gradient_norm": 0.7127141356468201,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3978
+          }
+        },
+        "8": {
+          "connector": {
+            "after_sha256": "6d6341b5727304bad83d8b6daa14e446c03668664ceb9c8eec208f1acdcb55f0",
+            "before_sha256": "839d425a69fa80827980b725d75c35beeeea445b11a632e4fb00a983a0c37c25",
+            "changed_sampled_elements": 2485,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.13976068794727325,
+            "max_abs_sampled_update": 0.00030517578125,
+            "sampled_elements": 4096
+          },
+          "language_model": {
+            "after_sha256": "e52970913445ff374ddaa8655f0d840eb6806966a4e7af503b40c5cbc52b9de1",
+            "before_sha256": "54c516658fdcae1db1f7396cced7624c065d2dfdfda7daf79ad808e6be8a770e",
+            "changed_sampled_elements": 785,
+            "changed_tensor_count": 171,
+            "gradient_norm": 0.7609013319015503,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3942
+          },
+          "vision_encoder": {
+            "after_sha256": "eeb99653412af67f19769b4a42d4480e92ad6c2196f4e9df07274446992b3691",
+            "before_sha256": "b71a38229a5af1a963576e34bec4b7e716fbcd4f428f02c82df68d5a23a15a2f",
+            "changed_sampled_elements": 732,
+            "changed_tensor_count": 125,
+            "gradient_norm": 0.6349089741706848,
+            "max_abs_sampled_update": 0.0001220703125,
+            "sampled_elements": 3978
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/diagram-validation.jsonl",
+        "repeat": true,
+        "sha256": "c9b159e4660af92954ea1ac3f222a622e179c7a5e49eb70a4495cfde80005b34"
+      }
+    },
+    "offline_dense_kd": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 3070012928,
+        "max_reserved_bytes": 3491758080
+      },
+      "grad_norm": {
+        "maximum": 3056.0,
+        "mean": 320.296875,
+        "minimum": 2.203125
+      },
+      "loss": {
+        "first": 5.90673303604126,
+        "first_4_mean": 5.7204989194869995,
+        "last": 4.772736072540283,
+        "last_4_mean": 4.920641899108887,
+        "last_vs_first_4_fraction": -0.13982294754979904,
+        "least_squares_slope_per_step": -0.03178690461551442,
+        "maximum": 8.48062515258789,
+        "minimum": 4.313544273376465,
+        "values": [
+          5.90673303604126,
+          5.4301018714904785,
+          6.122635364532471,
+          5.422525405883789,
+          4.612063884735107,
+          4.772969722747803,
+          5.16286563873291,
+          4.313544273376465,
+          6.629855632781982,
+          4.726599216461182,
+          8.48062515258789,
+          4.754124164581299,
+          5.536710262298584,
+          5.04163932800293,
+          4.33148193359375,
+          4.772736072540283
+        ]
+      },
+      "loss_terms": {
+        "dense_kl": {
+          "first": 0.5453115105628967,
+          "first_4_mean": 0.4717516601085663,
+          "last": 0.7252712249755859,
+          "last_4_mean": 0.8446455597877502,
+          "last_vs_first_4_fraction": 0.790445336415707,
+          "least_squares_slope_per_step": 0.03999140957260833,
+          "maximum": 1.3822563886642456,
+          "minimum": 0.2007008194923401,
+          "values": [
+            0.5453115105628967,
+            0.2007008194923401,
+            0.6974959969520569,
+            0.44349831342697144,
+            0.24309886991977692,
+            0.39537179470062256,
+            0.7128727436065674,
+            0.4032686948776245,
+            0.7002231478691101,
+            0.8019385933876038,
+            1.3822563886642456,
+            0.8279303908348083,
+            0.7278441786766052,
+            1.203123927116394,
+            0.7223429083824158,
+            0.7252712249755859
+          ]
+        },
+        "token_ce": {
+          "first": 9.632220268249512,
+          "first_4_mean": 9.553991317749023,
+          "last": 6.644387245178223,
+          "last_4_mean": 6.4627015590667725,
+          "last_vs_first_4_fraction": -0.32356003432192537,
+          "least_squares_slope_per_step": -0.22353945549796608,
+          "maximum": 11.43222427368164,
+          "minimum": 5.270783424377441,
+          "values": [
+            9.632220268249512,
+            10.057400703430176,
+            9.455286979675293,
+            9.071057319641113,
+            8.251731872558594,
+            7.964452266693115,
+            7.474240779876709,
+            7.014013290405273,
+            10.458818435668945,
+            6.245444297790527,
+            11.43222427368164,
+            6.196527004241943,
+            8.162043571472168,
+            5.270783424377441,
+            5.773591995239258,
+            6.644387245178223
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/offline_dense_kd.run.json",
+      "run_digest": "56a72c8538c7675cea8ef4c39f772b21418928fd0fdc65e6cb90bcc9bf50f440",
+      "run_file_sha256": "a0013697a194fbf936a0d3011debeb9dd008a16937faccf79e99ec95586230bb",
+      "steps": 16,
+      "task": "medium-offline_dense_kd.task.json",
+      "task_digest": "a102167fbe8d91e9b78047e7b9f4cf469e45fc3644af40144feb5db3a5530e4f",
+      "task_file_sha256": "fca477543ecf1be68addfc4e97564a9b665a4a18855e2368150f4e7016bd4e4e",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/kd-train.jsonl",
+        "repeat": true,
+        "sha256": "080b8decc515e884ce971508f22dcb09e67a7a46b4c67914a36e203492f2634b"
+      },
+      "update_evidence": {
+        "12": {
+          "connector": {
+            "after_sha256": "277230ace18fec73d2ffe4326cb2ef59969da701be5f5716e11e487871a9a567",
+            "before_sha256": "216f1d93e9723f1d1b61e3746b5fe87d3cc7d559182ea132a3b680e968f41d72",
+            "changed_sampled_elements": 2408,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.003540277481079,
+            "max_abs_sampled_update": 0.0002498626708984375,
+            "sampled_elements": 4096
+          }
+        },
+        "16": {
+          "connector": {
+            "after_sha256": "e1332e579541134193e63b57f9d0804de0db7f2f739fe40fe16002e6b73ea283",
+            "before_sha256": "3c213471c81b4115e15a74624957d80a477e6a58f266823de84df09ecfb09f0e",
+            "changed_sampled_elements": 2315,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0045567750930786,
+            "max_abs_sampled_update": 0.000274658203125,
+            "sampled_elements": 4096
+          }
+        },
+        "4": {
+          "connector": {
+            "after_sha256": "68f9a7ffc780efa4081b64bd7bcc05caf891bc5759a25d07c14d1053aa25f98f",
+            "before_sha256": "44bfe05e83a69598b93ecbbb2bd7558b579096763a076ac93348a46e25d32278",
+            "changed_sampled_elements": 2809,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.9999870657920837,
+            "max_abs_sampled_update": 0.00030517578125,
+            "sampled_elements": 4096
+          }
+        },
+        "8": {
+          "connector": {
+            "after_sha256": "0f5609cee25bdd86a348863fc1afaa25f225dd20f56f442dd03c8613027e993e",
+            "before_sha256": "074519755041d182708b96d0b513be79827c6c2accd299f0313a11883c83b8f0",
+            "changed_sampled_elements": 2660,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0032953023910522,
+            "max_abs_sampled_update": 0.0002593994140625,
+            "sampled_elements": 4096
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/kd-validation.jsonl",
+        "repeat": true,
+        "sha256": "f58179cbc6d13a1786519b4cf8d3a2b8d188e6cb2542d171b9f77b1d6a26fee7"
+      }
+    },
+    "offline_reference_dpo": {
+      "checkpoint_materialized": false,
+      "execution": {
+        "backend": "single",
+        "foundation": "torch",
+        "local_rank": 0,
+        "process_group_backend": null,
+        "rank": 0,
+        "torch_version": "2.13.0+cu130",
+        "world_size": 1
+      },
+      "gpu_memory": {
+        "max_allocated_bytes": 3579174912,
+        "max_reserved_bytes": 4213178368
+      },
+      "grad_norm": {
+        "maximum": 20.125,
+        "mean": 4.7138671875,
+        "minimum": 1.171875
+      },
+      "loss": {
+        "first": 0.6411834359169006,
+        "first_4_mean": 0.6373019516468048,
+        "last": 0.8252508044242859,
+        "last_4_mean": 0.6604655757546425,
+        "last_vs_first_4_fraction": 0.03634638815710868,
+        "least_squares_slope_per_step": 0.005952262440148522,
+        "maximum": 1.3835217952728271,
+        "minimum": 0.3981655538082123,
+        "values": [
+          0.6411834359169006,
+          0.7082069516181946,
+          0.7550886869430542,
+          0.4447287321090698,
+          0.7492759823799133,
+          0.5395062565803528,
+          0.579694926738739,
+          0.6755470633506775,
+          0.7323542833328247,
+          0.725563645362854,
+          1.3835217952728271,
+          0.4239979088306427,
+          0.6138526201248169,
+          0.3981655538082123,
+          0.8045933246612549,
+          0.8252508044242859
+        ]
+      },
+      "loss_terms": {
+        "dpo": {
+          "first": 0.6411834359169006,
+          "first_4_mean": 0.6373019516468048,
+          "last": 0.8252508044242859,
+          "last_4_mean": 0.6604655757546425,
+          "last_vs_first_4_fraction": 0.03634638815710868,
+          "least_squares_slope_per_step": 0.005952262440148522,
+          "maximum": 1.3835217952728271,
+          "minimum": 0.3981655538082123,
+          "values": [
+            0.6411834359169006,
+            0.7082069516181946,
+            0.7550886869430542,
+            0.4447287321090698,
+            0.7492759823799133,
+            0.5395062565803528,
+            0.579694926738739,
+            0.6755470633506775,
+            0.7323542833328247,
+            0.725563645362854,
+            1.3835217952728271,
+            0.4239979088306427,
+            0.6138526201248169,
+            0.3981655538082123,
+            0.8045933246612549,
+            0.8252508044242859
+          ]
+        }
+      },
+      "micro_batches": 16,
+      "run": "medium-validation/configs/offline_reference_dpo.run.json",
+      "run_digest": "f08a6e7ee931b1139c6f6cce246d6a10752da1974aa14343c5ffaf3bdbe2c291",
+      "run_file_sha256": "da026afabc5410a0804c264f3273c44d01d3cc888bfb9a0a63e2899c5cfeed13",
+      "steps": 16,
+      "task": "medium-offline_reference_dpo.task.json",
+      "task_digest": "0adbfd96a85937146a32cc23a607325cd459f47d21a9062c8bd66b7c6c9becb7",
+      "task_file_sha256": "4bba9153657be570cb09ba15f16322b23e8092d60fa9d2c24af4321d3cadf9c2",
+      "train_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/dpo-train.jsonl",
+        "repeat": true,
+        "sha256": "6633e32d21572223cd7e10a92e3cb15c5aec072c7ef74d5881c32e2f2191c03b"
+      },
+      "update_evidence": {
+        "12": {
+          "connector": {
+            "after_sha256": "dd03a35104874982a7121e6ebfb113776a8fe618c7af917cc43d589daf89e2cb",
+            "before_sha256": "389eeeb5a6a5c84b87ce3604d1e7d91cc172aba3cd752ad8d5826c24c8c1b6ed",
+            "changed_sampled_elements": 2232,
+            "changed_tensor_count": 3,
+            "gradient_norm": 0.999208390712738,
+            "max_abs_sampled_update": 0.000244140625,
+            "sampled_elements": 4096
+          }
+        },
+        "16": {
+          "connector": {
+            "after_sha256": "aa9f3974bc176b00a41dd1f48d2bbdd344108d1c1f18dab0fce7fa9f3d3808d1",
+            "before_sha256": "67459c78d3ee22120b4b9d5ce52b9c8d3c8b03540b6b1b1050d2feba93a22e0a",
+            "changed_sampled_elements": 2355,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0005779266357422,
+            "max_abs_sampled_update": 0.000244140625,
+            "sampled_elements": 4096
+          }
+        },
+        "4": {
+          "connector": {
+            "after_sha256": "7abe45ef0ea18a5a823981f8a7ac6d2e420f11ca876bdfe614bc0e146563914d",
+            "before_sha256": "d749b357fbf44cffe9f1d96cf6143e535b9a2dbaa63206c412d7fb1ebcafbe6c",
+            "changed_sampled_elements": 2712,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0024712085723877,
+            "max_abs_sampled_update": 0.00030517578125,
+            "sampled_elements": 4096
+          }
+        },
+        "8": {
+          "connector": {
+            "after_sha256": "f6f6a87623be812da33346b016ff23dc98065523732a0da3161e7ebd045a01d7",
+            "before_sha256": "8a743898c03b531ebde84c7764cfa792e672d3f27c93dc0e493141208c957a1b",
+            "changed_sampled_elements": 2476,
+            "changed_tensor_count": 3,
+            "gradient_norm": 1.0013340711593628,
+            "max_abs_sampled_update": 0.000274658203125,
+            "sampled_elements": 4096
+          }
+        }
+      },
+      "validation_source": {
+        "path": "D:/Codex/TrainOmni/FrameworkValidation/data/medium-v1/dpo-validation.jsonl",
+        "repeat": true,
+        "sha256": "e21d90dd12bec3a407eb79baa92ed7b2b118b49dc0d37a69d5cf74c9d556d1ff"
+      }
+    }
+  },
+  "schema_version": 1,
+  "totals": {
+    "micro_batches": 112,
+    "optimizer_steps": 112,
+    "routes": 7
+  }
+}
