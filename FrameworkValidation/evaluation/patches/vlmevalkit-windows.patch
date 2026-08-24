@@ -1,0 +1,62 @@
+diff --git a/run.py b/run.py
+index 58bce2c..a892afd 100644
+--- a/run.py
++++ b/run.py
+@@ -1011,7 +1011,12 @@ def run_local_mode(args):
+                         elif link_addr.exists() or link_addr.is_symlink():
+                             link_addr.unlink()
+                         rel_target = file_addr.relative_to(pred_root_meta)
+-                        link_addr.symlink_to(rel_target)
++                        try:
++                            link_addr.symlink_to(rel_target)
++                        except OSError as exc:
++                            if os.name != 'nt' or getattr(exc, 'winerror', None) != 1314:
++                                raise
++                            shutil.copy2(file_addr, link_addr)
+ 
+             except Exception as e:
+                 logger.exception(f'Model {model_name} x Dataset {dataset_name} combination failed: {e}, '
+diff --git a/vlmeval/dataset/utils/hipho_verifier.py b/vlmeval/dataset/utils/hipho_verifier.py
+index 3dad472..58f3b01 100644
+--- a/vlmeval/dataset/utils/hipho_verifier.py
++++ b/vlmeval/dataset/utils/hipho_verifier.py
+@@ -67,6 +67,13 @@ def timeout(timeout_seconds: int = 10):
+             return wrapper
+         return decorator
+ 
++    # SIGALRM is unavailable on Windows. Keep the verifier callable and rely
++    # on the caller's process-level timeout instead of failing at import time.
++    def decorator(func):
++        return func
++
++    return decorator
++
+ 
+ # units mainly from MathQA
+ unit_texts = [
+diff --git a/vlmeval/inference_api.py b/vlmeval/inference_api.py
+index bd9c7dc..80001b3 100644
+--- a/vlmeval/inference_api.py
++++ b/vlmeval/inference_api.py
+@@ -2,6 +2,8 @@ import asyncio
+ import json
+ import math
+ import multiprocessing as mp
++import os
++import shutil
+ import threading
+ import time
+ from concurrent.futures import ThreadPoolExecutor
+@@ -429,6 +431,11 @@ class APIEvalPipeline:
+                 rel_target = f.relative_to(model_base_dir)
+                 if link_addr.exists() or link_addr.is_symlink():
+                     link_addr.unlink()
+-                link_addr.symlink_to(rel_target)
++                try:
++                    link_addr.symlink_to(rel_target)
++                except OSError as exc:
++                    if os.name != 'nt' or getattr(exc, 'winerror', None) != 1314:
++                        raise
++                    shutil.copy2(f, link_addr)
+         except Exception as e:
+             logger.warning(f"   [{dataset_name}] Failed to create symlinks: {e}")

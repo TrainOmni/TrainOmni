@@ -25,8 +25,14 @@ The reproducible identities used during the redesign are:
 | ms-swift | `a54a4ae5c8680451ba4ddc91ad4577a38c74d560` | reference only | VLM templates/masks/model metadata |
 | LLaMA-Factory | `c4e09c7cbe18844816af9e18a97fe465515edbcd` | reference only | task/data configuration UX |
 | DeepSpeed | `cf44300453eb0af79ed84ed8f1cb49d57478bd76` | optional Linux backend + reference | ZeRO execution/config/checkpoint boundary |
+| VLMEvalKit | `e8e78f05f3080fe28154f2130321f17951c3be94` | external evaluation backend | VLM benchmark inference, scoring, and result formats |
 
 No code has been copied from these repositories into the replacement
 implementation. Optional DeepSpeed is imported through its public API only. Any
 future copied or substantially derived code requires a license check and a
 source/commit/path entry in a third-party notice.
+
+VLMEvalKit is installed editable from its external checkout and is not a Core
+dependency. The current Windows host applies a recorded compatibility overlay
+from `D:\Codex\TrainOmni\FrameworkValidation\evaluation\patches`; the upstream
+checkout remains the authoritative source and no project fork is maintained.

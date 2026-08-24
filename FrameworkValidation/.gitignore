@@ -4,3 +4,5 @@ cache/
 data/medium-v1/
 runs/
 *.safetensors
+evaluation/lmudata*/
+evaluation/runs*/

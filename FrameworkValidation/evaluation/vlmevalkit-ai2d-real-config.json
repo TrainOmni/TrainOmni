@@ -1,0 +1,21 @@
+{
+  "model": {
+    "TrainOmniStage05AI2D": {
+      "class": "TrainOmniAI2DModel",
+      "artifact": "D:\\Codex\\TrainOmni\\FrameworkValidation\\artifacts\\stage-05-final",
+      "artifact_sha256": "8f59b4c004058da9b6bb8b211c4785e5e58fb2ef18f2ad3c50961f2c0d98b3c2",
+      "vision_checkpoint": "D:\\Models\\VLM\\Qwen3.5-0.8B",
+      "language_checkpoint": "D:\\Models\\LLM\\MiniCPM5-1B",
+      "device": "cuda:0",
+      "max_text_tokens": 256,
+      "max_new_tokens": 8,
+      "decode_strategy": "greedy"
+    }
+  },
+  "data": {
+    "AI2D_MINI": {
+      "class": "ImageMCQDataset",
+      "dataset": "AI2D_MINI"
+    }
+  }
+}

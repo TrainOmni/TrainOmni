@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "date": "2026-08-24",
+  "benchmark": {
+    "name": "AI2D_MINI",
+    "rows": 247,
+    "dataset_sha256": "ecc687dee2a9d4272e5c478fcea676a54d0fe10fd951d7bf4bb12b5693a5ae8e",
+    "judge": "exact_matching"
+  },
+  "model": {
+    "name": "TrainOmniStage05AI2D",
+    "artifact": "FrameworkValidation/artifacts/stage-05-final",
+    "artifact_sha256": "8f59b4c004058da9b6bb8b211c4785e5e58fb2ef18f2ad3c50961f2c0d98b3c2",
+    "vision_checkpoint": "Qwen/Qwen3.5-0.8B",
+    "language_checkpoint": "openbmb/MiniCPM5-1B"
+  },
+  "execution": {
+    "device": "cuda:0",
+    "precision": "bf16",
+    "decode_strategy": "greedy",
+    "max_new_tokens": 8,
+    "model_calls": 247,
+    "autoregressive_forwards": 1976,
+    "inference_failures": 0,
+    "judge_failures": 0,
+    "elapsed_seconds": 105.82144680000056,
+    "loaded_cuda_bytes": 2412930048,
+    "peak_inference_cuda_bytes": 2598773248
+  },
+  "result": {
+    "correct": 2,
+    "total": 247,
+    "overall_accuracy": 0.008097165991902834,
+    "quality_gate": "failed",
+    "engineering_gate": "passed"
+  },
+  "evaluator": {
+    "repository": "open-compass/VLMEvalKit",
+    "commit": "e8e78f05f3080fe28154f2130321f17951c3be94",
+    "package_version": "0.2rc1"
+  },
+  "verification": {
+    "framework_tests": "105 passed, 1 skipped",
+    "ruff": "all checks passed"
+  }
+}

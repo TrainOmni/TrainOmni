@@ -1,0 +1,13 @@
+{
+  "model": {
+    "TrainOmniSmoke": {
+      "class": "TrainOmniSmokeModel"
+    }
+  },
+  "data": {
+    "TrainOmniSmoke": {
+      "class": "CustomMCQDataset",
+      "dataset": "TrainOmniSmoke"
+    }
+  }
+}
