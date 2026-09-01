@@ -4,10 +4,15 @@ from torch import nn
 from torch.nn import functional
 
 from trainomni.contracts.batch import OmniBatch
+from trainomni.contracts.cache import (
+    current_model_inputs_field,
+    digest_tensor,
+    model_inputs_digest,
+)
 from trainomni.contracts.forward import ForwardResult
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
-from trainomni.modules.objectives._ops.cache_identity import digest_tensor, value_digest
+from trainomni.modules.objectives._ops.cache_identity import value_digest
 from trainomni.modules.objectives.dpo.config import DPOConfig
 from trainomni.modules.objectives.dpo.module import DPOObjective
 from trainomni.runtime.device.context import DeviceContext
@@ -16,9 +21,25 @@ from trainomni.runtime.loop.step import execute_forward_plan
 PRODUCER = "b" * 64
 
 
-def binding(field, input_ids, labels, branch, attention_mask=None):
+def binding(
+    field,
+    input_ids,
+    labels,
+    branch,
+    attention_mask=None,
+    *,
+    producer_model_inputs=None,
+    current_model_inputs=None,
+):
+    explicit_attention = attention_mask is not None
     if attention_mask is None:
         attention_mask = torch.ones_like(labels)
+    if producer_model_inputs is None:
+        producer_model_inputs = {"input_ids": input_ids[0]}
+        if explicit_attention:
+            producer_model_inputs["attention_mask"] = attention_mask[0]
+    if current_model_inputs is None:
+        current_model_inputs = producer_model_inputs
     positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
     prefix = f"__cache_identity__{field}__"
     return {
@@ -32,8 +53,21 @@ def binding(field, input_ids, labels, branch, attention_mask=None):
         prefix + "target_token_ids_sha256": digest_tensor(
             value_digest(labels[0].index_select(0, positions))
         ).unsqueeze(0),
+        prefix + "model_inputs_sha256": digest_tensor(
+            model_inputs_digest(producer_model_inputs)
+        ).unsqueeze(0),
         prefix + "producer_identity_sha256": digest_tensor(PRODUCER).unsqueeze(0),
         prefix + "branch": torch.tensor([branch]),
+        current_model_inputs_field(field): digest_tensor(
+            model_inputs_digest(current_model_inputs)
+        ).unsqueeze(0),
+    }
+
+
+def unbatched(inputs):
+    return {
+        name: value[0] if isinstance(value, torch.Tensor) else value
+        for name, value in inputs.items()
     }
 
 
@@ -335,6 +369,24 @@ def test_dpo_response_sequence_context_may_differ() -> None:
     chosen_inputs["position_ids"] = torch.arange(4).unsqueeze(0)
     rejected_inputs["position_ids"] = chosen_inputs["position_ids"].clone()
     rejected_inputs["position_ids"][0, 2:] += 10
+    supervision.update(
+        binding(
+            "chosen_reference_logps",
+            chosen_inputs["input_ids"],
+            supervision["chosen_labels"],
+            1,
+            producer_model_inputs=unbatched(chosen_inputs),
+        )
+    )
+    supervision.update(
+        binding(
+            "rejected_reference_logps",
+            rejected_inputs["input_ids"],
+            supervision["rejected_labels"],
+            2,
+            producer_model_inputs=unbatched(rejected_inputs),
+        )
+    )
     supervision["chosen_inputs"] = chosen_inputs
     supervision["rejected_inputs"] = rejected_inputs
     varied = OmniBatch(
@@ -347,6 +399,152 @@ def test_dpo_response_sequence_context_may_differ() -> None:
         DPOConfig(reference_producer_identity_sha256=PRODUCER)
     ).plan(varied, ObjectiveContext(0, 0))
     assert len(plan.requests) == 2
+
+
+def test_dpo_same_logical_prompt_allows_unequal_left_padded_responses() -> None:
+    chosen_ids = torch.tensor([[0, 0, 1, 2, 3, 4]])
+    rejected_ids = torch.tensor([[0, 1, 2, 5, 6, 7]])
+    chosen_attention = torch.tensor([[0, 0, 1, 1, 1, 1]])
+    rejected_attention = torch.tensor([[0, 1, 1, 1, 1, 1]])
+    chosen_labels = torch.tensor([[-100, -100, -100, -100, 3, 4]])
+    rejected_labels = torch.tensor([[-100, -100, -100, 5, 6, 7]])
+    chosen_positions = torch.tensor([[0, 0, 0, 1, 2, 3]])
+    rejected_positions = torch.tensor([[0, 0, 1, 2, 3, 4]])
+    chosen_types = torch.tensor([[0, 0, 7, 7, 8, 8]])
+    rejected_types = torch.tensor([[0, 7, 7, 8, 8, 8]])
+    chosen_inputs = {
+        "input_ids": chosen_ids,
+        "attention_mask": chosen_attention,
+        "position_ids": chosen_positions,
+        "token_type_ids": chosen_types,
+        "cache_position": chosen_positions,
+    }
+    rejected_inputs = {
+        "input_ids": rejected_ids,
+        "attention_mask": rejected_attention,
+        "position_ids": rejected_positions,
+        "token_type_ids": rejected_types,
+        "cache_position": rejected_positions,
+    }
+    batch = OmniBatch(
+        sample_ids=("unequal-left-pad",),
+        model_inputs={"input_ids": chosen_ids},
+        labels=chosen_ids,
+        supervision={
+            "chosen_inputs": chosen_inputs,
+            "rejected_inputs": rejected_inputs,
+            "chosen_labels": chosen_labels,
+            "rejected_labels": rejected_labels,
+            "chosen_reference_logps": torch.zeros(1, 5),
+            "rejected_reference_logps": torch.zeros(1, 5),
+            **binding(
+                "chosen_reference_logps",
+                chosen_ids,
+                chosen_labels,
+                1,
+                chosen_attention,
+                producer_model_inputs=unbatched(chosen_inputs),
+            ),
+            **binding(
+                "rejected_reference_logps",
+                rejected_ids,
+                rejected_labels,
+                2,
+                rejected_attention,
+                producer_model_inputs=unbatched(rejected_inputs),
+            ),
+        },
+    )
+    plan = DPOObjective(
+        DPOConfig(reference_producer_identity_sha256=PRODUCER)
+    ).plan(batch, ObjectiveContext(0, 0))
+    assert [request.name for request in plan.requests] == [
+        "chosen_policy",
+        "rejected_policy",
+    ]
+
+
+@pytest.mark.parametrize("field", ["pixel_values", "position_ids"])
+def test_dpo_stale_model_input_cache_fails_before_forward(field: str) -> None:
+    chosen_ids = torch.tensor([[1, 2, 3, 4]])
+    rejected_ids = torch.tensor([[1, 2, 4, 3]])
+    chosen_labels = torch.tensor([[-100, 2, 3, 4]])
+    rejected_labels = torch.tensor([[-100, 2, 4, 3]])
+    producer_chosen = {
+        "input_ids": chosen_ids[0],
+        "pixel_values": torch.ones(1, 2),
+        "position_ids": torch.arange(4),
+    }
+    producer_rejected = {
+        "input_ids": rejected_ids[0],
+        "pixel_values": torch.ones(1, 2),
+        "position_ids": torch.arange(4),
+    }
+    current_chosen = {
+        name: value.clone() for name, value in producer_chosen.items()
+    }
+    current_rejected = {
+        name: value.clone() for name, value in producer_rejected.items()
+    }
+    current_chosen[field].reshape(-1)[0] += 1
+    current_rejected[field].reshape(-1)[0] += 1
+    chosen_inputs = {
+        name: value.unsqueeze(0) for name, value in current_chosen.items()
+    }
+    rejected_inputs = {
+        name: value.unsqueeze(0) for name, value in current_rejected.items()
+    }
+    batch = OmniBatch(
+        sample_ids=("stale-pair-input",),
+        model_inputs=chosen_inputs,
+        labels=chosen_labels,
+        supervision={
+            "chosen_inputs": chosen_inputs,
+            "rejected_inputs": rejected_inputs,
+            "chosen_labels": chosen_labels,
+            "rejected_labels": rejected_labels,
+            "chosen_reference_logps": torch.zeros(1, 3, dtype=torch.float32),
+            "rejected_reference_logps": torch.zeros(1, 3, dtype=torch.float32),
+            **binding(
+                "chosen_reference_logps",
+                chosen_ids,
+                chosen_labels,
+                1,
+                producer_model_inputs=producer_chosen,
+                current_model_inputs=current_chosen,
+            ),
+            **binding(
+                "rejected_reference_logps",
+                rejected_ids,
+                rejected_labels,
+                2,
+                producer_model_inputs=producer_rejected,
+                current_model_inputs=current_rejected,
+            ),
+        },
+    )
+
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, **kwargs):
+            self.calls += 1
+            return {"logits": torch.zeros(*kwargs["input_ids"].shape, 6)}
+
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="model_inputs identity mismatch"):
+        execute_forward_plan(
+            model=policy,
+            objective=DPOObjective(
+                DPOConfig(reference_producer_identity_sha256=PRODUCER)
+            ),
+            batch=batch,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0
 
 
 def test_dpo_prompt_attention_layout_mismatch_fails_with_self_consistent_cache() -> None:
@@ -400,7 +598,7 @@ def test_dpo_prompt_attention_layout_mismatch_fails_with_self_consistent_cache()
             return {"logits": torch.zeros(*kwargs["input_ids"].shape, 6)}
 
     policy = Policy()
-    with pytest.raises(ObjectiveError, match="valid mask differ"):
+    with pytest.raises(ObjectiveError, match="contiguous span"):
         execute_forward_plan(
             model=policy,
             objective=DPOObjective(

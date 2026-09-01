@@ -7,7 +7,12 @@ import torch
 from safetensors.torch import save_file
 from torch import nn
 
-from trainomni.contracts.batch import OmniBatch
+from trainomni.contracts.batch import EncodedSample, OmniBatch
+from trainomni.contracts.cache import (
+    current_model_inputs_field,
+    digest_tensor,
+    model_inputs_digest,
+)
 from trainomni.contracts.sample import ContentBlock, OmniSample
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError, SpecError
@@ -15,6 +20,12 @@ from trainomni.modules.data.model_io.transformers.config import (
     TransformersModelIOConfig,
 )
 from trainomni.modules.data.model_io.transformers.module import TransformersModelIO
+from trainomni.modules.data.supervision.dense_kd.config import DenseKDSupervisionConfig
+from trainomni.modules.data.supervision.dense_kd.module import DenseKDSupervision
+from trainomni.modules.data.supervision.preference.config import (
+    PreferenceSupervisionConfig,
+)
+from trainomni.modules.data.supervision.preference.module import PreferenceSupervision
 from trainomni.modules.data.transforms.tensor_cache.config import TensorCacheConfig
 from trainomni.modules.data.transforms.tensor_cache.module import TensorCacheTransform
 from trainomni.modules.objectives._ops.cache_identity import value_digest
@@ -40,7 +51,7 @@ def make_cache(
     root: Path,
     *,
     tensor_digest: str | None = None,
-    schema_version: int = 3,
+    schema_version: int = 4,
 ):
     tensor_path = root / "cache.safetensors"
     save_file({"sample.teacher": torch.arange(21).reshape(3, 7)}, tensor_path)
@@ -62,6 +73,9 @@ def make_cache(
                         ),
                         "target_token_ids_sha256": value_digest(
                             torch.tensor([2, 3])
+                        ),
+                        "model_inputs_sha256": model_inputs_digest(
+                            {"input_ids": torch.tensor([1, 2, 3])}
                         ),
                         "producer_identity_sha256": "a" * 64,
                         "branch": "teacher",
@@ -101,6 +115,65 @@ def test_hash_pinned_tensor_cache_reaches_model_io_supervision(tmp_path: Path) -
     assert encoded.supervision[
         "__cache_identity__teacher_logits__producer_identity_sha256"
     ].shape == (32,)
+    assert encoded.supervision[
+        "__cache_identity__teacher_logits__model_inputs_sha256"
+    ].shape == (32,)
+
+
+def test_kd_supervision_generates_current_full_model_input_identity() -> None:
+    model_inputs = {
+        "input_ids": torch.tensor([1, 2, 3]),
+        "pixel_values": torch.arange(6, dtype=torch.float32).reshape(1, 2, 3),
+        "position_ids": torch.arange(3),
+    }
+    example = DenseKDSupervision(DenseKDSupervisionConfig()).annotate(
+        EncodedSample(
+            "kd",
+            model_inputs,
+            {
+                "teacher_logits": torch.zeros(3, 7),
+                "loss_mask": torch.tensor([False, True, True]),
+            },
+        )
+    )
+    observed = example.supervision[current_model_inputs_field("teacher_logits")]
+    expected = digest_tensor(model_inputs_digest(model_inputs))
+    assert torch.equal(observed, expected)
+
+
+def test_preference_supervision_generates_both_current_input_identities() -> None:
+    chosen_inputs = {
+        "input_ids": torch.tensor([1, 2, 3]),
+        "pixel_values": torch.ones(1, 2),
+        "position_ids": torch.arange(3),
+    }
+    rejected_inputs = {
+        "input_ids": torch.tensor([1, 2, 4]),
+        "pixel_values": torch.ones(1, 2),
+        "position_ids": torch.arange(3),
+    }
+    supervision = {
+        "chosen_inputs": chosen_inputs,
+        "rejected_inputs": rejected_inputs,
+        "chosen_labels": torch.tensor([-100, 2, 3]),
+        "rejected_labels": torch.tensor([-100, 2, 4]),
+        "chosen_reference_logps": torch.zeros(2, dtype=torch.float32),
+        "rejected_reference_logps": torch.zeros(2, dtype=torch.float32),
+        "__cache_identity__chosen_reference_logps__branch": torch.tensor(1),
+    }
+    example = PreferenceSupervision(PreferenceSupervisionConfig()).annotate(
+        EncodedSample("pair", chosen_inputs, supervision)
+    )
+    for field, inputs in (
+        ("chosen_reference_logps", chosen_inputs),
+        ("rejected_reference_logps", rejected_inputs),
+    ):
+        observed = example.supervision[current_model_inputs_field(field)]
+        expected = digest_tensor(model_inputs_digest(inputs))
+        assert torch.equal(observed, expected)
+    assert (
+        "__cache_identity__chosen_reference_logps__branch" in example.supervision
+    )
 
 
 def test_tensor_cache_corruption_fails_before_model_io(tmp_path: Path) -> None:
@@ -116,8 +189,11 @@ def test_tensor_cache_corruption_fails_before_model_io(tmp_path: Path) -> None:
         transform.apply(OmniSample("sample", (ContentBlock("text", "x"),)))
 
 
-def test_tensor_cache_schema_v2_fails_closed(tmp_path: Path) -> None:
-    index = make_cache(tmp_path, schema_version=2)
+@pytest.mark.parametrize("schema_version", [2, 3])
+def test_tensor_cache_legacy_schemas_fail_closed(
+    tmp_path: Path, schema_version: int
+) -> None:
+    index = make_cache(tmp_path, schema_version=schema_version)
     with pytest.raises(SpecError, match="unsupported tensor-cache index schema"):
         TensorCacheTransform(
             TensorCacheConfig(
@@ -136,7 +212,7 @@ def _batched_cache(transform: TensorCacheTransform) -> dict[str, torch.Tensor]:
     }
 
 
-def test_schema_v3_kd_cache_rejects_padding_relayout_before_forward(
+def test_schema_v4_kd_cache_rejects_padding_relayout_before_forward(
     tmp_path: Path,
 ) -> None:
     producer_ids = torch.tensor([1, 2, 3, 0])
@@ -145,7 +221,7 @@ def test_schema_v3_kd_cache_rejects_padding_relayout_before_forward(
     tensor_path = tmp_path / "cache.safetensors"
     save_file({"sample.teacher": torch.zeros(3, 7)}, tensor_path)
     index = {
-        "schema_version": 3,
+        "schema_version": 4,
         "samples": {
             "sample": {
                 "file": tensor_path.name,
@@ -160,6 +236,12 @@ def test_schema_v3_kd_cache_rejects_padding_relayout_before_forward(
                         ),
                         "target_token_ids_sha256": value_digest(
                             torch.tensor([2, 3])
+                        ),
+                        "model_inputs_sha256": model_inputs_digest(
+                            {
+                                "input_ids": producer_ids,
+                                "attention_mask": producer_attention,
+                            }
                         ),
                         "producer_identity_sha256": "a" * 64,
                         "branch": "teacher",
@@ -178,6 +260,15 @@ def test_schema_v3_kd_cache_rejects_padding_relayout_before_forward(
         task_root=tmp_path,
     )
     consumer_ids = torch.tensor([[0, 1, 2, 3]])
+    supervision = _batched_cache(transform)
+    supervision[current_model_inputs_field("teacher_logits")] = digest_tensor(
+        model_inputs_digest(
+            {
+                "input_ids": consumer_ids[0],
+                "attention_mask": torch.tensor([0, 1, 1, 1]),
+            }
+        )
+    ).unsqueeze(0)
     batch = OmniBatch(
         sample_ids=("sample",),
         model_inputs={
@@ -185,7 +276,7 @@ def test_schema_v3_kd_cache_rejects_padding_relayout_before_forward(
             "attention_mask": torch.tensor([[0, 1, 1, 1]]),
         },
         labels=torch.tensor([[-100, -100, 2, 3]]),
-        supervision=_batched_cache(transform),
+        supervision=supervision,
     )
 
     class Policy(nn.Module):
@@ -211,7 +302,7 @@ def test_schema_v3_kd_cache_rejects_padding_relayout_before_forward(
     assert policy.calls == 0
 
 
-def test_schema_v3_dpo_cache_rejects_padding_relayout_before_forward(
+def test_schema_v4_dpo_cache_rejects_padding_relayout_before_forward(
     tmp_path: Path,
 ) -> None:
     producer_attention = torch.tensor([1, 1, 1, 0])
@@ -233,12 +324,18 @@ def test_schema_v3_dpo_cache_rejects_padding_relayout_before_forward(
             "attention_mask_sha256": value_digest(producer_attention),
             "supervised_positions_sha256": value_digest(producer_positions),
             "target_token_ids_sha256": value_digest(targets),
+            "model_inputs_sha256": model_inputs_digest(
+                {
+                    "input_ids": input_ids,
+                    "attention_mask": producer_attention,
+                }
+            ),
             "producer_identity_sha256": "b" * 64,
             "branch": branch,
         }
 
     index = {
-        "schema_version": 3,
+        "schema_version": 4,
         "samples": {
             "sample": {
                 "file": tensor_path.name,
@@ -287,6 +384,26 @@ def test_schema_v3_dpo_cache_rejects_padding_relayout_before_forward(
             },
             "chosen_labels": torch.tensor([[-100, -100, 2, 3]]),
             "rejected_labels": torch.tensor([[-100, -100, 2, 4]]),
+            current_model_inputs_field(
+                "chosen_reference_logps"
+            ): digest_tensor(
+                model_inputs_digest(
+                    {
+                        "input_ids": chosen[0],
+                        "attention_mask": consumer_attention[0],
+                    }
+                )
+            ).unsqueeze(0),
+            current_model_inputs_field(
+                "rejected_reference_logps"
+            ): digest_tensor(
+                model_inputs_digest(
+                    {
+                        "input_ids": rejected[0],
+                        "attention_mask": consumer_attention[0],
+                    }
+                )
+            ).unsqueeze(0),
         }
     )
     batch = OmniBatch(

@@ -15,12 +15,12 @@ evidence, not a model-quality or Linux/NCCL/Ascend performance claim.
 | Checkpoint failures | pure rank-local scheduler/objective/stream/scaler/RNG capture completes an all-rank outcome phase before gather/I/O; rank zero broadcasts filesystem and identity-materialization failures | rank-one injected state capture and rank-zero filesystem failure two-rank tests |
 | Local-rank device binding | CUDA/NPU local rank is selected before process-group initialization and therefore before FSDP device-mesh creation | device binding/order tests |
 | Distributed model-only evaluation | single-process load restores a distributed objective only when all saved rank states are exactly equal | rank-invariant positive and rank-dependent negative checkpoint tests |
-| DPO pair alignment | chosen/rejected prompt tokens, prompt valid mask, prompt portions of token sequence fields and all common non-sequence inputs/media match; only response/padding sequence suffixes vary | token/attention/position/type/cache/media/branch pre-forward negatives |
+| DPO pair alignment | chosen/rejected logical prompt tokens/mask, each branch's own logical prompt values for position/type/cache fields, and all common non-sequence inputs/media match; response length and physical left-padding offset may differ, while non-contiguous masks fail | unequal-response left-padding positive plus token/attention/position/type/cache/media/branch pre-forward negatives |
 | Prefix fusion | expanded attention/ordinary 2-D positions are regenerated; stale cache/rope/model-specific position fields fail closed | prefix position/mask/cache/rope tests |
 | Token replacement | modal validity masks permit unequal counts; padded slots require the `-1` sentinel and are not written | unequal-modal-count positive and sentinel-negative tests |
 | Transformers assets | immutable revision identifies only a remote repository snapshot; an existing/local-files-only asset requires a producer manifest for checkpointing and otherwise retains physical best-effort identity | real temporary local-directory, remote-revision, relocation and checkpoint rejection tests |
 | Parquet/Arrow snapshots | only a valid producer manifest makes paths relocatable; unpinned diagnostics retain declared/resolved paths and cannot checkpoint | pinned relocation/changed-manifest and unpinned A/B collision tests |
-| Offline KD/DPO caches | schema-v3 binds shard, full expanded IDs, full attention layout, absolute supervised positions/targets, producer and branch; schema-v2 and left/right-padding collisions fail before forward | cache schema, numeric oracle and KD/DPO padding/alignment negatives |
+| Offline KD/DPO caches | schema-v4 additionally binds the complete uncollated model-input mapping; builtin supervision hashes current media/auxiliary inputs before collation, while schemas v2/v3, stale media/position inputs and left/right-padding collisions fail before forward | cache schema, numeric oracle and KD/DPO padding/alignment/media/auxiliary negatives |
 | Documentation/catalog | package version, test evidence, builtin descriptor count and support matrix refer to the same corrected tree | wheel import/CLI/catalog smoke plus full suite |
 
 ## External identity trust boundary
@@ -34,7 +34,11 @@ not prove that a dishonest producer described the payload truthfully.
 For cached KD/DPO, the producer identity digest must combine the precise producer
 model state, processor, tokenizer and generation contract. Per-sample bindings
 then prevent cache reuse against different expanded tokens, attention/padding
-layout, absolute target masks or pair branches before policy forward.
+layout, absolute target masks, media tensors, auxiliary model inputs or pair
+branches before policy forward. The current complete-input digest is computed by
+Framework supervision after ModelIO and before collation rather than being copied
+from the cache manifest; this preserves per-sample identity when a batch later
+pads text or concatenates variable media tensors.
 
 ## Hardware boundary
 

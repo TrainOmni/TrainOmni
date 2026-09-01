@@ -19,7 +19,7 @@ from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 
-from .._ops.cache_identity import validate_cache_binding
+from .._ops.cache_identity import current_model_inputs_field, validate_cache_binding
 from .._ops.causal_shift import causal_shift
 from .._ops.reductions import reduce_token_losses
 from .._ops.token_ce import token_cross_entropy
@@ -44,8 +44,10 @@ class DenseKDObjective:
                     prefix + "attention_mask_sha256",
                     prefix + "supervised_positions_sha256",
                     prefix + "target_token_ids_sha256",
+                    prefix + "model_inputs_sha256",
                     prefix + "producer_identity_sha256",
                     prefix + "branch",
+                    current_model_inputs_field(self.config.teacher_logits_field),
                 }
             ),
         )

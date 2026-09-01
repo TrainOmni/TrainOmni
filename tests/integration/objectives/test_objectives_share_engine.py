@@ -4,7 +4,12 @@ import torch
 from torch import nn
 
 from trainomni.contracts.batch import OmniBatch
-from trainomni.modules.objectives._ops.cache_identity import digest_tensor, value_digest
+from trainomni.contracts.cache import (
+    current_model_inputs_field,
+    digest_tensor,
+    model_inputs_digest,
+)
+from trainomni.modules.objectives._ops.cache_identity import value_digest
 from trainomni.modules.objectives.dense_kd.config import DenseKDConfig
 from trainomni.modules.objectives.dense_kd.module import DenseKDObjective
 from trainomni.modules.objectives.dpo.config import DPOConfig
@@ -17,8 +22,12 @@ PRODUCER = "e" * 64
 
 
 def binding(field, input_ids, labels, branch, attention_mask=None):
+    explicit_attention = attention_mask is not None
     if attention_mask is None:
         attention_mask = torch.ones_like(labels)
+    model_inputs = {"input_ids": input_ids[0]}
+    if explicit_attention:
+        model_inputs["attention_mask"] = attention_mask[0]
     positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
     prefix = f"__cache_identity__{field}__"
     return {
@@ -32,8 +41,14 @@ def binding(field, input_ids, labels, branch, attention_mask=None):
         prefix + "target_token_ids_sha256": digest_tensor(
             value_digest(labels[0].index_select(0, positions))
         ).unsqueeze(0),
+        prefix + "model_inputs_sha256": digest_tensor(
+            model_inputs_digest(model_inputs)
+        ).unsqueeze(0),
         prefix + "producer_identity_sha256": digest_tensor(PRODUCER).unsqueeze(0),
         prefix + "branch": torch.tensor([branch]),
+        current_model_inputs_field(field): digest_tensor(
+            model_inputs_digest(model_inputs)
+        ).unsqueeze(0),
     }
 
 

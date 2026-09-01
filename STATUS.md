@@ -12,6 +12,9 @@ pre-redesign code is archive-only and is not a second active implementation.
 - Flat/chat multimodal samples, media identity, image/video transforms,
   safetensors sidecar cache, Transformers ModelIO, supervision, collation and
   resumable sequence packing are implemented.
+- Offline-cache schema v4 binds every per-sample uncollated model-input mapping,
+  including media and auxiliary tensors; Framework computes the current digest
+  before collation and rejects stale KD/DPO caches before model forward.
 - Named child data sources and deterministic weighted mixture sampling preserve
   every child cursor, selection cursor and per-source count across exact resume.
 - Monolithic and ordered multi-branch composite models support vision/video
@@ -56,16 +59,16 @@ pre-redesign code is archive-only and is not a second active implementation.
 
 ## Verification evidence
 
-- Full source suite: **174 passed, 1 skipped**. The only skip is the POSIX launcher
+- Full source suite: **182 passed, 1 skipped**. The only skip is the POSIX launcher
   execution test on the current Windows host.
 - Ruff: clean across `src/trainomni` and `tests`.
 - Python compileall: passed with bytecode directed outside Framework.
 - Wheel: `trainomni-0.1.1-py3-none-any.whl` built successfully; SHA-256
-  `ea8dac77822dbe036eccd3b21941c6a103162d5c95bf68bc8c075533f3943373`.
+  `d63063ec658e4492f531264aa07263f8dec9364c68f2f061f77183270484191d`.
 - Isolated wheel import/CLI: version `0.1.1`; the current source catalog has 41
   builtin descriptors and CLI help passes.
-- Installed-wheel corrected-path subset: **69 passed**; its builtin source digest
-  exactly matches the editable tree (`98a53f8b96cf2f632274bb9416f28b9669be04527fc0adc0abc0b9c7a0ce63e6`).
+- Installed-wheel corrected-path subset: **68 passed**; its builtin source digest
+  exactly matches the editable tree (`a7f7b23f862e4fe2fbc86a50f420bd54aa6d30cd7b3695453e45af4b59fa976f`).
   The subset includes asset/data/cache/objective contracts, checkpoint and
   rank-failure coordination, exact-resume Objective paths and two-rank Gloo.
 - Project-local Windows interpreter: `Framework/.venv/Scripts/python.exe`, Python

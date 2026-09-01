@@ -20,7 +20,7 @@ from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 
-from .._ops.cache_identity import validate_cache_binding
+from .._ops.cache_identity import current_model_inputs_field, validate_cache_binding
 from .._ops.sequence_logp import causal_sequence_logp
 from ..protocol import ObjectiveRequirements
 from .config import DPOConfig
@@ -43,8 +43,10 @@ class DPOObjective:
                     prefix + "attention_mask_sha256",
                     prefix + "supervised_positions_sha256",
                     prefix + "target_token_ids_sha256",
+                    prefix + "model_inputs_sha256",
                     prefix + "producer_identity_sha256",
                     prefix + "branch",
+                    current_model_inputs_field(field),
                 }
             )
         return ObjectiveRequirements(
@@ -356,6 +358,13 @@ class DPOObjective:
                     f"DPO {branch} has supervised targets outside the attention mask"
                 )
             valid_positions = torch.nonzero(valid, as_tuple=False).flatten()
+            if valid_positions.numel() > 0 and int(
+                valid_positions[-1].item() - valid_positions[0].item() + 1
+            ) != int(valid_positions.numel()):
+                raise ObjectiveError(
+                    f"DPO {branch} attention_mask valid tokens must form one "
+                    "contiguous span"
+                )
             ids = input_ids[index].index_select(0, valid_positions)
             row_labels = labels[index].index_select(0, valid_positions)
             supervised = torch.nonzero(
@@ -370,13 +379,13 @@ class DPOObjective:
                 raise ObjectiveError(
                     f"DPO {branch} labels do not define one masked common prompt prefix"
                 )
-            first_target = int(valid_positions[boundary].item())
             prompts.append(
                 {
                     "ids": ids[:boundary].detach().cpu(),
                     "positions": valid_positions[:boundary].detach().cpu(),
-                    "attention_prefix": attention[index, :first_target].detach().cpu(),
-                    "first_target": first_target,
+                    "mask": valid.index_select(
+                        0, valid_positions[:boundary]
+                    ).detach().cpu(),
                 }
             )
         return tuple(prompts)
@@ -433,8 +442,7 @@ class DPOObjective:
             rejected_inputs, rejected_labels, branch="rejected"
         )
         if len(chosen_prompts) != len(rejected_prompts) or any(
-            chosen["first_target"] != rejected["first_target"]
-            or not torch.equal(chosen["attention_prefix"], rejected["attention_prefix"])
+            not torch.equal(chosen["mask"], rejected["mask"])
             or not torch.equal(chosen["ids"], rejected["ids"])
             for chosen, rejected in zip(chosen_prompts, rejected_prompts, strict=True)
         ):

@@ -7,6 +7,10 @@ from collections.abc import Mapping
 
 import torch
 
+from trainomni.contracts.cache import (
+    current_model_inputs_field,
+    digest_tensor,
+)
 from trainomni.core.errors import ObjectiveError
 
 
@@ -16,12 +20,6 @@ def value_digest(value: torch.Tensor) -> str:
     digest.update(str(tuple(normalized.shape)).encode("ascii"))
     digest.update(normalized.numpy().tobytes())
     return digest.hexdigest()
-
-
-def digest_tensor(value: str, *, device=None) -> torch.Tensor:
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-        raise ValueError("cache identity must be a lowercase SHA-256 digest")
-    return torch.tensor(list(bytes.fromhex(value)), dtype=torch.uint8, device=device)
 
 
 def _expected_rows(inputs: Mapping, labels: torch.Tensor, *, ignore_index: int):
@@ -76,8 +74,10 @@ def validate_cache_binding(
         "attention_mask": prefix + "attention_mask_sha256",
         "positions": prefix + "supervised_positions_sha256",
         "targets": prefix + "target_token_ids_sha256",
+        "model_inputs": prefix + "model_inputs_sha256",
         "producer": prefix + "producer_identity_sha256",
         "branch": prefix + "branch",
+        "current_model_inputs": current_model_inputs_field(cache_field),
     }
     missing = sorted(set(expected_fields.values()) - set(batch.supervision))
     if missing:
@@ -111,6 +111,25 @@ def validate_cache_binding(
                 raise ObjectiveError(
                     f"offline cache {cache_field!r} {name} identity mismatch"
                 )
+        cached_model_inputs = batch.supervision[expected_fields["model_inputs"]]
+        current_model_inputs = batch.supervision[
+            expected_fields["current_model_inputs"]
+        ]
+        if (
+            not isinstance(cached_model_inputs, torch.Tensor)
+            or not isinstance(current_model_inputs, torch.Tensor)
+            or cached_model_inputs.ndim != 2
+            or current_model_inputs.ndim != 2
+            or cached_model_inputs.shape != (labels.shape[0], 32)
+            or current_model_inputs.shape != (labels.shape[0], 32)
+            or not torch.equal(
+                cached_model_inputs[index].detach().cpu(),
+                current_model_inputs[index].detach().cpu(),
+            )
+        ):
+            raise ObjectiveError(
+                f"offline cache {cache_field!r} model_inputs identity mismatch"
+            )
         branches = batch.supervision[expected_fields["branch"]]
         if (
             not isinstance(branches, torch.Tensor)

@@ -2,6 +2,7 @@
 
 from .artifact import ArtifactIdentity
 from .batch import EncodedSample, OmniBatch, SupervisedExample
+from .cache import current_model_inputs_field, digest_tensor, model_inputs_digest
 from .data import DataRecord
 from .distribution import DistributionHints, distribution_hints
 from .features import ModalFeatureBranch, ModalFeatures, ModalFeatureSet
@@ -29,5 +30,8 @@ __all__ = [
     "OmniSample",
     "OutputRequirements",
     "SupervisedExample",
+    "current_model_inputs_field",
+    "digest_tensor",
     "distribution_hints",
+    "model_inputs_digest",
 ]

@@ -3,6 +3,11 @@
 import torch
 
 from trainomni.contracts.batch import SupervisedExample
+from trainomni.contracts.cache import (
+    current_model_inputs_field,
+    digest_tensor,
+    model_inputs_digest,
+)
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
@@ -27,11 +32,22 @@ class DenseKDSupervision:
             if not isinstance(loss_mask, torch.Tensor) or loss_mask.shape != labels.shape:
                 raise SpecError("dense KD loss_mask must align with input_ids")
             labels = labels.masked_fill(~loss_mask.bool(), self.config.ignore_index)
+        supervision = dict(sample.supervision)
+        current_field = current_model_inputs_field(self.config.teacher_logits_field)
+        if current_field in supervision:
+            raise SpecError(
+                f"dense KD supervision reserves current-input field {current_field!r}"
+            )
+        try:
+            current_digest = model_inputs_digest(sample.model_inputs)
+        except ValueError as exc:
+            raise SpecError(f"cannot bind dense KD model inputs: {exc}") from exc
+        supervision[current_field] = digest_tensor(current_digest)
         return SupervisedExample(
             sample_id=sample.sample_id,
             model_inputs=sample.model_inputs,
             labels=labels,
-            supervision=sample.supervision,
+            supervision=supervision,
         )
 
 

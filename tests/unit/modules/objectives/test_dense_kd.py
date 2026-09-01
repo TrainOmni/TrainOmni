@@ -4,10 +4,15 @@ from torch import nn
 from torch.nn import functional
 
 from trainomni.contracts.batch import OmniBatch
+from trainomni.contracts.cache import (
+    current_model_inputs_field,
+    digest_tensor,
+    model_inputs_digest,
+)
 from trainomni.contracts.forward import ForwardResult
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
-from trainomni.modules.objectives._ops.cache_identity import digest_tensor, value_digest
+from trainomni.modules.objectives._ops.cache_identity import value_digest
 from trainomni.modules.objectives.dense_kd.config import DenseKDConfig
 from trainomni.modules.objectives.dense_kd.module import DenseKDObjective
 from trainomni.runtime.device.context import DeviceContext
@@ -16,9 +21,23 @@ from trainomni.runtime.loop.step import execute_forward_plan
 PRODUCER = "a" * 64
 
 
-def cache_identity(input_ids, labels, attention_mask=None):
+def cache_identity(
+    input_ids,
+    labels,
+    attention_mask=None,
+    *,
+    producer_model_inputs=None,
+    current_model_inputs=None,
+):
+    explicit_attention = attention_mask is not None
     if attention_mask is None:
         attention_mask = torch.ones_like(labels)
+    if producer_model_inputs is None:
+        producer_model_inputs = {"input_ids": input_ids[0]}
+        if explicit_attention:
+            producer_model_inputs["attention_mask"] = attention_mask[0]
+    if current_model_inputs is None:
+        current_model_inputs = producer_model_inputs
     positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
     prefix = "__cache_identity__teacher_logits__"
     return {
@@ -32,8 +51,14 @@ def cache_identity(input_ids, labels, attention_mask=None):
         prefix + "target_token_ids_sha256": digest_tensor(
             value_digest(labels[0].index_select(0, positions))
         ).unsqueeze(0),
+        prefix + "model_inputs_sha256": digest_tensor(
+            model_inputs_digest(producer_model_inputs)
+        ).unsqueeze(0),
         prefix + "producer_identity_sha256": digest_tensor(PRODUCER).unsqueeze(0),
         prefix + "branch": torch.tensor([0]),
+        current_model_inputs_field("teacher_logits"): digest_tensor(
+            model_inputs_digest(current_model_inputs)
+        ).unsqueeze(0),
     }
 
 
@@ -245,6 +270,56 @@ def test_dense_kd_padding_layout_collision_fails_before_forward() -> None:
     )
     policy = Policy()
     with pytest.raises(ObjectiveError, match="identity mismatch"):
+        execute_forward_plan(
+            model=policy,
+            objective=DenseKDObjective(
+                DenseKDConfig(producer_identity_sha256=PRODUCER)
+            ),
+            batch=batch,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0
+
+
+@pytest.mark.parametrize("field", ["pixel_values", "position_ids"])
+def test_dense_kd_stale_model_input_cache_fails_before_forward(field: str) -> None:
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, **kwargs):
+            self.calls += 1
+            return {"logits": torch.zeros(*kwargs["input_ids"].shape, 5)}
+
+    input_ids = torch.tensor([[1, 2, 3, 4]])
+    labels = torch.tensor([[-100, 2, 3, 4]])
+    producer_inputs = {
+        "input_ids": input_ids[0],
+        "pixel_values": torch.ones(1, 2),
+        "position_ids": torch.arange(4),
+    }
+    current_inputs = {name: value.clone() for name, value in producer_inputs.items()}
+    current_inputs[field].reshape(-1)[0] += 1
+    batch = OmniBatch(
+        sample_ids=("stale-model-input",),
+        model_inputs={
+            name: value.unsqueeze(0) for name, value in current_inputs.items()
+        },
+        labels=labels,
+        supervision={
+            "teacher_logits": torch.zeros(1, 3, 5),
+            **cache_identity(
+                input_ids,
+                labels,
+                producer_model_inputs=producer_inputs,
+                current_model_inputs=current_inputs,
+            ),
+        },
+    )
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="model_inputs identity mismatch"):
         execute_forward_plan(
             model=policy,
             objective=DenseKDObjective(

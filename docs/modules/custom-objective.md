@@ -63,10 +63,17 @@ metrics = {
 Offline caches are not trusted merely because their shard SHA-256 matches. The
 builtin KD/DPO objectives require per-sample bindings for expanded `input_ids`,
 the full expanded `attention_mask`, absolute supervised positions, target token
-IDs, branch identity and one producer identity digest. That producer digest must
-itself bind the producing model, processor and tokenizer snapshots. Cache binding
-failures occur before policy forward. Tensor-cache schema v2 is rejected; producers
-must write schema v3.
+IDs, the complete uncollated model-input mapping, branch identity and one producer
+identity digest. The complete mapping includes media tensors and auxiliary inputs
+such as `image_grid_thw`, `position_ids`, `token_type_ids` and `cache_position`.
+Producers must calculate that field with the stable
+`trainomni.modules.objectives.ops.model_inputs_digest` helper. Builtin supervision
+recomputes the current mapping digest after ModelIO and before collation, so
+variable/concatenated media batches remain composable; the Objective compares it
+with the producer-bound cache identity before policy forward. Unsupported input
+value types and reserved-current-field collisions fail closed. The producer digest
+must itself bind the producing model, processor and tokenizer snapshots.
+Tensor-cache schemas v2/v3 are rejected; producers must write schema v4.
 
 Supervision modules create labels, target positions, masks or preference branches.
 Objectives must still validate them before calculating loss. Loss weights and
