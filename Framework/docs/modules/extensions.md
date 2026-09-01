@@ -9,6 +9,7 @@ typed config, capability negotiation and source identity rules.
 | Kind | Owns |
 | --- | --- |
 | data_source | storage access and resumable source cursor |
+| data_adapter | physical row/schema conversion into `OmniSample` |
 | sample_transform | media loading, normalization, filtering, augmentation |
 | model_io | processor, tokenizer, template, special tokens and tensor mapping |
 | supervision | labels, masks, target positions and preference branches |

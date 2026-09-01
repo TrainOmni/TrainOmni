@@ -23,6 +23,7 @@ _MODULE_ID = re.compile(
 
 class ModuleKind(StrEnum):
     DATA_SOURCE = "data_source"
+    DATA_ADAPTER = "data_adapter"
     SAMPLE_TRANSFORM = "sample_transform"
     MODEL_IO = "model_io"
     SUPERVISION = "supervision"

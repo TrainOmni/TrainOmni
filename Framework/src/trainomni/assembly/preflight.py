@@ -35,6 +35,7 @@ def _preflight_data_path(
     references = (
         *(reference for _, reference in spec.sources),
         spec.source,
+        *((spec.adapter,) if spec.adapter is not None else ()),
         *spec.transforms,
         spec.model_io,
         spec.supervision,
@@ -62,6 +63,7 @@ def preflight_task(task: TaskSpec, resolver: ModuleResolver) -> PreflightReport:
         for reference in (
             *(reference for _, reference in task.data.sources),
             task.data.source,
+            *((task.data.adapter,) if task.data.adapter is not None else ()),
             *task.data.transforms,
             task.data.model_io,
             task.data.supervision,
@@ -75,6 +77,11 @@ def preflight_task(task: TaskSpec, resolver: ModuleResolver) -> PreflightReport:
             for reference in (
                 *(reference for _, reference in task.evaluation.data.sources),
                 task.evaluation.data.source,
+                *(
+                    (task.evaluation.data.adapter,)
+                    if task.evaluation.data.adapter is not None
+                    else ()
+                ),
                 *task.evaluation.data.transforms,
                 task.evaluation.data.model_io,
                 task.evaluation.data.supervision,

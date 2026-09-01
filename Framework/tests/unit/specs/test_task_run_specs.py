@@ -88,6 +88,15 @@ def test_named_child_sources_are_canonical_and_part_of_task_identity() -> None:
     assert len(left_task.module_refs()) == len(TaskSpec.from_mapping(task_payload()).module_refs()) + 2
 
 
+def test_data_adapter_is_typed_and_part_of_task_identity() -> None:
+    payload = task_payload()
+    payload["data"]["adapter"] = ref("data_adapter", "msswift")
+    task = TaskSpec.from_mapping(payload)
+    assert str(task.data.adapter.module_id) == "data_adapter:test/msswift@1"
+    assert task.data.adapter in task.module_refs()
+    assert task.digest != TaskSpec.from_mapping(task_payload()).digest
+
+
 def test_nested_unknown_keys_fail_closed(tmp_path: Path) -> None:
     payload = task_payload()
     payload["model"]["implementaton"] = payload["model"]["implementation"]

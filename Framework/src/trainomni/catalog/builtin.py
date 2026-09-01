@@ -5,6 +5,9 @@ choose whether to include the builtin catalog in their own registry instance.
 """
 
 from trainomni.core.registry import ModuleRegistry
+from trainomni.modules.data.adapters.msswift.module import (
+    descriptor as msswift_adapter,
+)
 from trainomni.modules.data.collation.multimodal.module import (
     descriptor as multimodal_collator,
 )
@@ -13,9 +16,11 @@ from trainomni.modules.data.model_io.transformers.module import (
 )
 from trainomni.modules.data.packing.none.module import descriptor as no_packing
 from trainomni.modules.data.packing.sequence.module import descriptor as sequence_packing
+from trainomni.modules.data.sources.arrow.module import descriptor as arrow_source
 from trainomni.modules.data.sources.jsonl.module import descriptor as jsonl_source
 from trainomni.modules.data.sources.memory.module import descriptor as memory_source
 from trainomni.modules.data.sources.mixture.module import descriptor as mixture_source
+from trainomni.modules.data.sources.parquet.module import descriptor as parquet_source
 from trainomni.modules.data.supervision.causal_lm.module import (
     descriptor as causal_supervision,
 )
@@ -85,7 +90,10 @@ def builtin_descriptors():
     return (
         memory_source(),
         jsonl_source(),
+        parquet_source(),
+        arrow_source(),
         mixture_source(),
+        msswift_adapter(),
         media_transform(),
         tensor_cache_transform(),
         image_transform(),

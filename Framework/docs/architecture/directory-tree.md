@@ -35,6 +35,7 @@ Framework/
 │   │   └── digest.py
 │   ├── contracts/                 # stable cross-module value objects only
 │   │   ├── sample.py
+│   │   ├── data.py                 # storage-neutral physical row contract
 │   │   ├── features.py
 │   │   ├── batch.py
 │   │   ├── forward.py
@@ -51,10 +52,17 @@ Framework/
 │   │   └── preflight.py
 │   ├── modules/
 │   │   ├── data/
+│   │   │   ├── adapters/
+│   │   │   │   ├── protocol.py
+│   │   │   │   ├── binding.py     # source -> semantic adapter composition
+│   │   │   │   └── msswift/{config.py,module.py}
 │   │   │   ├── sources/
 │   │   │   │   ├── protocol.py
+│   │   │   │   ├── _columnar.py   # physical-fragment planning and cursor
 │   │   │   │   ├── memory/{config.py,module.py}
 │   │   │   │   ├── jsonl/{config.py,module.py}
+│   │   │   │   ├── parquet/{config.py,module.py}
+│   │   │   │   ├── arrow/{config.py,module.py}
 │   │   │   │   └── mixture/{config.py,module.py}
 │   │   │   ├── transforms/
 │   │   │   │   ├── protocol.py

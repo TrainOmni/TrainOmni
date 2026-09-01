@@ -62,6 +62,7 @@ def _ref(value: Any, *, field: str, kind: ModuleKind) -> ModuleRef:
 @dataclass(frozen=True, slots=True)
 class DataPipelineSpec:
     source: ModuleRef
+    adapter: ModuleRef | None
     sources: tuple[tuple[str, ModuleRef], ...]
     transforms: tuple[ModuleRef, ...]
     model_io: ModuleRef
@@ -73,6 +74,7 @@ class DataPipelineSpec:
     def from_mapping(cls, value: Mapping[str, Any]) -> DataPipelineSpec:
         allowed = {
             "source",
+            "adapter",
             "sources",
             "transforms",
             "model_io",
@@ -106,8 +108,18 @@ class DataPipelineSpec:
             raise SpecError(
                 "data source names must be non-empty and cannot start with '__'"
             )
+        raw_adapter = value.get("adapter")
         return cls(
             source=_ref(value.get("source"), field="data.source", kind=ModuleKind.DATA_SOURCE),
+            adapter=(
+                None
+                if raw_adapter is None
+                else _ref(
+                    raw_adapter,
+                    field="data.adapter",
+                    kind=ModuleKind.DATA_ADAPTER,
+                )
+            ),
             sources=sources,
             transforms=tuple(
                 _ref(item, field=f"data.transforms[{index}]", kind=ModuleKind.SAMPLE_TRANSFORM)
@@ -302,6 +314,7 @@ class TaskSpec:
         references = [
             *(reference for _, reference in self.data.sources),
             self.data.source,
+            *((self.data.adapter,) if self.data.adapter is not None else ()),
             *self.data.transforms,
             self.data.model_io,
             self.data.supervision,
@@ -318,6 +331,11 @@ class TaskSpec:
                 (
                     *(reference for _, reference in self.evaluation.data.sources),
                     self.evaluation.data.source,
+                    *(
+                        (self.evaluation.data.adapter,)
+                        if self.evaluation.data.adapter is not None
+                        else ()
+                    ),
                     *self.evaluation.data.transforms,
                     self.evaluation.data.model_io,
                     self.evaluation.data.supervision,

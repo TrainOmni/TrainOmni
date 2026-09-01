@@ -95,6 +95,7 @@ The initial module kinds are:
 | Kind | Variable behavior owned |
 | --- | --- |
 | `data_source` | storage/format access and resumable sample cursor |
+| `data_adapter` | physical record/schema conversion into `OmniSample` |
 | `sample_transform` | normalization, filtering, media loading and augmentation |
 | `model_io` | processor/tokenizer/template/special tokens and tensor field mapping |
 | `supervision` | labels, loss masks, target positions and preference branches |

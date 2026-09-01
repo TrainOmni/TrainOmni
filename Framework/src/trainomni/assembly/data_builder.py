@@ -9,6 +9,7 @@ from trainomni.core.context import BuildContext
 from trainomni.core.errors import CheckpointError
 from trainomni.core.module import ModuleKind
 from trainomni.core.resolver import ModuleResolver
+from trainomni.modules.data.adapters.binding import AdaptedSource
 from trainomni.runtime.execution.data import RankShardedSource
 from trainomni.specs.task import DataPipelineSpec
 
@@ -48,8 +49,15 @@ class DataPipelineStream:
         self.collator = collator
         self._ready = []
 
-    def shard(self, *, rank: int, world_size: int) -> None:
-        if world_size == 1:
+    def shard(
+        self,
+        *,
+        rank: int,
+        world_size: int,
+        worker_id: int = 0,
+        num_workers: int = 1,
+    ) -> None:
+        if world_size == 1 and num_workers == 1:
             return
         if isinstance(self.source, RankShardedSource):
             if (self.source.rank, self.source.world_size) != (rank, world_size):
@@ -57,6 +65,19 @@ class DataPipelineStream:
             return
         if self._ready:
             raise CheckpointError("data stream must be sharded before reading samples")
+        physical_shard = getattr(self.source, "shard", None)
+        if callable(physical_shard):
+            physical_shard(
+                rank=rank,
+                world_size=world_size,
+                worker_id=worker_id,
+                num_workers=num_workers,
+            )
+            return
+        if num_workers != 1:
+            raise CheckpointError(
+                "generic sample sources do not support physical worker sharding"
+            )
         self.source = RankShardedSource(
             self.source,
             rank=rank,
@@ -149,6 +170,12 @@ def build_data_stream(
     source = resolver.resolve(spec.source, kind=ModuleKind.DATA_SOURCE).build(
         source_context
     )
+    if spec.adapter is not None:
+        adapter = resolver.resolve(
+            spec.adapter,
+            kind=ModuleKind.DATA_ADAPTER,
+        ).build(context)
+        source = AdaptedSource(source, adapter)
     transforms = tuple(
         resolver.resolve(reference, kind=ModuleKind.SAMPLE_TRANSFORM).build(context)
         for reference in spec.transforms

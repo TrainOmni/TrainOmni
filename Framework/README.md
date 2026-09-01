@@ -12,6 +12,9 @@ The replacement implementation currently has an executable first vertical slice:
 - canonical sample to encoded/supervised/packed/batched data boundaries;
 - deterministic weighted multi-dataset sampling with named child sources and
   exact-resume cursors/counts;
+- native PyArrow Parquet row-group and Arrow IPC readers with pre-I/O DP-rank
+  and worker partitioning, plus a separate ms-swift-compatible multimodal row
+  adapter;
 - composite encoder/connector/fusion/language model assembly;
 - ordered multi-branch image/video routing through `ModalFeatureSet`, with
   optional branches and an additive path for a later audio encoder;
@@ -46,6 +49,7 @@ Important documents:
 - modal branch/fusion ABI: docs/contracts/modal-features.md
 - multimodal field collation policies: docs/contracts/collation.md
 - canonical flat/chat samples and assistant-mask semantics: docs/contracts/samples.md
+- Parquet/Arrow and ms-swift-compatible data path: docs/modules/columnar-data.md
 - resumable sequence packing and attention isolation: docs/contracts/sequence-packing.md
 - verified support and explicit non-claims: docs/verification/support-matrix.md
 - current Windows CUDA development environment: docs/verification/windows-cuda-environment.md

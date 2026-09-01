@@ -2,6 +2,7 @@
 
 from .artifact import ArtifactIdentity
 from .batch import EncodedSample, OmniBatch, SupervisedExample
+from .data import DataRecord
 from .distribution import DistributionHints, distribution_hints
 from .features import ModalFeatureBranch, ModalFeatures, ModalFeatureSet
 from .forward import ForwardPlan, ForwardRequest, ForwardResult, OutputRequirements
@@ -11,6 +12,7 @@ from .sample import ContentBlock, Message, OmniSample
 __all__ = [
     "ArtifactIdentity",
     "ContentBlock",
+    "DataRecord",
     "DistributionHints",
     "EncodedSample",
     "ForwardPlan",
