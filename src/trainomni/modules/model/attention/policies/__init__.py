@@ -1,0 +1,1 @@
+"""Model-default attention policy."""

@@ -1,102 +1,176 @@
-# Quickstart
+# One task, one run, one command
 
-## 1. Install
+Framework code is installed or placed on `PYTHONPATH`; the task directory and run
+directory remain outside Framework. The following is the minimal monolithic VLM
+shape. Replace paths and SHA-256 values with immutable local assets.
 
-```powershell
-cd D:\Codex\TrainOmni\Framework
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[torch,peft]"
+`task.yaml`:
+
+```yaml
+schema_version: 1
+name: my-vlm-sft
+data:
+  source:
+    module: data_source:trainomni/jsonl@1
+    config:
+      path: data/train.jsonl
+      sha256: <64-lowercase-hex>
+      repeat: true
+  transforms:
+    - module: sample_transform:trainomni/media@1
+      config: {require_sha256: true}
+    - module: sample_transform:trainomni/image@1
+  model_io:
+    module: model_io:trainomni/transformers@1
+    config:
+      processor_name_or_path: D:/Models/my-vlm
+      local_files_only: true
+      conversation_mode: required
+      require_assistant_mask: true
+  supervision:
+    module: supervision:trainomni/causal_lm@1
+  packer:
+    module: packer:trainomni/none@1
+  collator:
+    module: collator:trainomni/multimodal@1
+model:
+  implementation:
+    module: model:trainomni/monolithic_transformers@1
+    config:
+      model_name_or_path: D:/Models/my-vlm
+      local_files_only: true
+  components: {}
+objective:
+  module: objective:trainomni/causal_lm@1
+parameters:
+  module: parameter_policy:trainomni/full@1
+evaluation:
+  data:
+    source:
+      module: data_source:trainomni/jsonl@1
+      config:
+        path: data/heldout.jsonl
+        sha256: <64-lowercase-hex>
+        repeat: true
+    transforms:
+      - module: sample_transform:trainomni/media@1
+        config: {require_sha256: true}
+      - module: sample_transform:trainomni/image@1
+    model_io:
+      module: model_io:trainomni/transformers@1
+      config:
+        processor_name_or_path: D:/Models/my-vlm
+        local_files_only: true
+        conversation_mode: required
+    supervision: {module: supervision:trainomni/causal_lm@1}
+    packer: {module: packer:trainomni/none@1}
+    collator: {module: collator:trainomni/multimodal@1}
+  evaluators:
+    - module: evaluator:trainomni/loss@1
+      config: {term: token_ce, metric_name: eval_loss}
+exporters:
+  - module: exporter:trainomni/transformers@1
 ```
 
-`data`、`eval`、`peft` 分组都是 optional；核心 schema/inspect 不强制安装 torch。
+`run.yaml`:
 
-## 2. Inspect a recipe without weights
-
-```powershell
-$plugin = "examples/plugins/tiny_llava.py:PLUGIN"
-
-trainomni --plugin $plugin validate configs/examples/tiny_llava_smoke.yaml
-trainomni --plugin $plugin inspect model configs/examples/tiny_llava_smoke.yaml
-trainomni --plugin $plugin inspect data configs/examples/tiny_llava_smoke.yaml --samples 2
-trainomni --plugin $plugin inspect batch configs/examples/tiny_llava_smoke.yaml --samples 1
-trainomni --plugin $plugin dry-run configs/examples/tiny_llava_smoke.yaml
+```yaml
+schema_version: 1
+name: baseline
+seed: 42
+deterministic: false
+device: cuda:0
+precision: bf16_true
+attention_kernel: sdpa
+max_steps: 1000
+per_device_batch_size: 1
+gradient_accumulation_steps: 8
+max_grad_norm: 1.0
+optimizer:
+  name: adamw
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  foreach: false
+scheduler:
+  name: cosine
+  warmup_steps: 50
+activation_checkpointing:
+  enabled: true
+  components: [model]
+  use_reentrant: false
+checkpoint:
+  directory: outputs/checkpoints
+  every_steps: 100
 ```
 
-`inspect batch` 允许加载 tokenizer/processor，但不调用 `plugin.build()`，不会加载模型权重。
+Execution is a RunSpec concern. The task is unchanged when moving between direct
+PyTorch backends:
 
-## 3. Train
-
-```powershell
-trainomni --plugin $plugin train configs/examples/tiny_llava_smoke.yaml `
-  --output-dir runs/tiny-llava
+```yaml
+execution:
+  backend: torch_ddp       # single | torch_ddp | torch_fsdp2 | deepspeed
+  expected_world_size: 8
+  process_group_backend: nccl
+  ddp:
+    find_unused_parameters: false
+    static_graph: true
 ```
 
-输出包含：
+For FSDP2, the model plugin must return valid `DistributionHints.fsdp_units` and
+the backend is `torch_fsdp2`. DeepSpeed is an optional Linux-only execution probe;
+its native ZeRO checkpoint bridge is not complete, so checkpoint-enabled
+DeepSpeed runs fail closed. See `../architecture/distributed-execution.md`.
+
+A bounded training-only diagnostic can explicitly disable all checkpoint writes:
+
+```yaml
+checkpoint:
+  enabled: false
+  directory: outputs/checkpoints   # still anchors run identity/metrics
+  every_steps: 100
+```
+
+This mode cannot resume, evaluate, export or save explicitly. It is useful for
+loss/update/resource gates that should not duplicate multi-gigabyte payloads.
+
+Windows PowerShell startup keeps interpreter selection outside the task/run
+semantics:
+
+```powershell
+$env:TRAINOMNI_PYTHON = 'D:\path\to\cuda-env\Scripts\python.exe'
+D:\path\to\Framework\launch\windows\trainomni.ps1 train --task D:\tasks\my-vlm\task.yaml --run D:\runs\baseline\run.yaml
+```
+
+Resume, evaluate and export use the same task/run identities:
 
 ```text
-runs/tiny-llava/
-  provenance.json
-  metrics.jsonl
-  run-manifest.json
-  checkpoints/
-    step-00000001/
-    step-00000002/
+trainomni train --task task.yaml --run run.yaml --resume outputs/checkpoints/step-00000100
+trainomni evaluate --task task.yaml --run run.yaml --checkpoint outputs/checkpoints/step-00001000 --batches 100
+trainomni export --task task.yaml --run run.yaml --checkpoint outputs/checkpoints/step-00001000
 ```
 
-## 4. Resume exactly
+For a composite ViT + connector + LLM, only the `model` section changes to the
+composite implementation plus named encoder/connector/fusion/language modules.
+Loss, attention policy, data source, ModelIO, parameter policy, evaluator and
+exporter are independent extension points described in `../modules/extensions.md`.
 
-Local/DDP exact checkpoints保存 Python pickle runtime state，只对可信训练目录使用：
+For deterministic weighted multi-dataset training, replace `data.source` and add
+named child sources. Child module references are part of the task identity, and all
+child cursors plus mixture counts are checkpointed:
 
-```powershell
-trainomni --plugin $plugin train configs/examples/tiny_llava_smoke.yaml `
-  --output-dir runs/tiny-llava-resume `
-  --resume runs/tiny-llava/checkpoints/step-00000001 `
-  --trusted-resume
+```yaml
+data:
+  sources:
+    captions:
+      module: data_source:trainomni/jsonl@1
+      config: {path: data/captions.jsonl, sha256: <64-lowercase-hex>, repeat: true}
+    ocr:
+      module: data_source:trainomni/jsonl@1
+      config: {path: data/ocr.jsonl, sha256: <64-lowercase-hex>, repeat: true}
+  source:
+    module: data_source:trainomni/mixture@1
+    config:
+      weights: {captions: 0.7, ocr: 0.3}
+      seed: 17
+  # transforms/model_io/supervision/packer/collator remain unchanged
 ```
-
-配置 fingerprint 必须一致。若只需要迁移权重，应走 export/model-only checkpoint，而不是伪装成 exact resume。
-
-## 5. Evaluate and export
-
-```powershell
-trainomni --plugin $plugin evaluate configs/examples/tiny_llava_smoke.yaml `
-  --checkpoint runs/tiny-llava/checkpoints/step-00000002 `
-  --trusted-checkpoint --output-dir runs/tiny-llava-eval --max-batches 2
-
-trainomni --plugin $plugin export configs/examples/tiny_llava_smoke.yaml `
-  --checkpoint runs/tiny-llava/checkpoints/step-00000002 `
-  --trusted-checkpoint --output-dir runs/tiny-llava-hf --format hf
-```
-
-FSDP2 DCP 的 `model_only` 不读取 rank runtime pickle，可直接在单进程重分片并导出，不需要 `--trusted-checkpoint`。
-
-## 6. Pipeline
-
-```powershell
-trainomni --plugin $plugin plan configs/examples/tiny_llava_pipeline.yaml
-trainomni --plugin $plugin run configs/examples/tiny_llava_pipeline.yaml `
-  --output-dir runs/tiny-llava-pipeline
-```
-
-边会把前一 stage 的 artifact ID、selector 和物理 URI传到下一 stage。Pipeline state 原子写入 `pipeline-state.json`；恢复已有 exact artifact 时要求 `--trusted-resume`。
-
-## 7. Distributed smoke
-
-生产环境用 `torchrun` 提供 `RANK/LOCAL_RANK/WORLD_SIZE`。Windows CPU CI 可用无 libuv 依赖的 file rendezvous：
-
-```powershell
-python scripts/run_local_ddp_smoke.py `
-  --plugin tests/plugins/torch_toy_vlm_plugin.py:PLUGIN `
-  --config configs/examples/torch_toy_ddp_smoke.yaml `
-  --output-dir runs/ddp-smoke
-```
-
-FSDP2 只需把 recipe 的 `engine.parallelism` 改为 `fsdp2`；checkpoint 自动切换到 DCP。
-
-## 8. Global flags
-
-- `--plugin FILE.py:ATTR`：显式信任 model plugin，可重复。
-- `--data-plugin FILE.py:ATTR`：显式信任 reader/importer plugin，可重复。
-- `--json`：machine-readable output。
-
-这些 flag 必须放在 subcommand 前面。

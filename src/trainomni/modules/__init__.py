@@ -1,0 +1,1 @@
+"""Builtin TrainOmni module implementations."""

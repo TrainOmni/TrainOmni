@@ -1,0 +1,1 @@
+"""Modal encoder modules."""

@@ -1,0 +1,1 @@
+"""Monolithic Transformers model adapter."""
