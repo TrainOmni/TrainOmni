@@ -44,7 +44,7 @@ class TensorCacheTransform:
             raise SpecError(f"cannot read tensor-cache index: {exc}") from exc
         if not isinstance(raw, Mapping) or set(raw) != {"schema_version", "samples"}:
             raise SpecError("tensor-cache index root is invalid")
-        if raw["schema_version"] != 2 or not isinstance(raw["samples"], Mapping):
+        if raw["schema_version"] != 3 or not isinstance(raw["samples"], Mapping):
             raise SpecError("unsupported tensor-cache index schema")
         self.entries = {
             str(sample_id): self._validate_entry(str(sample_id), entry)
@@ -99,6 +99,7 @@ class TensorCacheTransform:
         normalized_bindings = {}
         required = {
             "input_ids_sha256",
+            "attention_mask_sha256",
             "supervised_positions_sha256",
             "target_token_ids_sha256",
             "producer_identity_sha256",
@@ -168,6 +169,7 @@ class TensorCacheTransform:
             prefix = f"__cache_identity__{output}__"
             for field in (
                 "input_ids_sha256",
+                "attention_mask_sha256",
                 "supervised_positions_sha256",
                 "target_token_ids_sha256",
                 "producer_identity_sha256",

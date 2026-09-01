@@ -289,6 +289,48 @@ class ProcessContext:
                 raise error from cause
             raise error
 
+    def propagate_rank_failure(
+        self,
+        failure: Exception | dict[str, str] | None,
+        *,
+        owner: str,
+        error_type: type[Exception],
+    ) -> None:
+        """Raise one deterministic error on every rank after rank-local work."""
+
+        cause = failure if isinstance(failure, Exception) else None
+        local_payload = (
+            {
+                "type": type(failure).__name__,
+                "message": str(failure),
+            }
+            if isinstance(failure, Exception)
+            else failure
+        )
+        if self.world_size > 1:
+            gathered: list[Any] = [None] * self.world_size
+            torch.distributed.all_gather_object(gathered, local_payload)
+        else:
+            gathered = [local_payload]
+        failed = next(
+            (
+                (rank, payload)
+                for rank, payload in enumerate(gathered)
+                if payload is not None
+            ),
+            None,
+        )
+        if failed is None:
+            return
+        rank, payload = failed
+        error = error_type(
+            f"{owner} failed on rank {rank}: "
+            f"{payload['type']}: {payload['message']}"
+        )
+        if cause is not None and rank == self.rank:
+            raise error from cause
+        raise error
+
     def reduce_float(self, value: float, *, reduction: str, device: torch.device) -> float:
         if self.world_size == 1:
             return float(value)

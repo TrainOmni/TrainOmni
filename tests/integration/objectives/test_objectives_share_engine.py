@@ -16,11 +16,16 @@ from trainomni.specs.run import RunSpec
 PRODUCER = "e" * 64
 
 
-def binding(field, input_ids, labels, branch):
+def binding(field, input_ids, labels, branch, attention_mask=None):
+    if attention_mask is None:
+        attention_mask = torch.ones_like(labels)
     positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
     prefix = f"__cache_identity__{field}__"
     return {
         prefix + "input_ids_sha256": digest_tensor(value_digest(input_ids[0])).unsqueeze(0),
+        prefix + "attention_mask_sha256": digest_tensor(
+            value_digest(attention_mask[0])
+        ).unsqueeze(0),
         prefix + "supervised_positions_sha256": digest_tensor(
             value_digest(positions)
         ).unsqueeze(0),

@@ -35,12 +35,17 @@ pre-redesign code is archive-only and is not a second active implementation.
   claim checkpointed exact resume.
 - Gradient accumulation uses one globally reduced semantic denominator across all
   microbatches/ranks. A two-rank Gloo oracle covers unequal local token counts.
+- Objective metrics declare either global-sum or weighted-mean numerator/denominator
+  semantics. Unequal microbatch/rank token and pair counts use exact global
+  aggregation rather than averaging local scalars.
 - Finite sources flush packer state and expose partial/drop-last behavior;
   multi-rank finite or unknown exhaustion fails before reading until an equal-step
   sampler exists.
-- Rank-zero checkpoint/materialization failures are broadcast without a stranded
-  barrier. Rank-invariant distributed objective state is portable to single-process
-  model-only evaluation; rank-dependent state fails closed.
+- Rank-local scheduler/objective/stream/scaler/RNG capture failures are gathered
+  before checkpoint collectives or filesystem work, and rank-zero filesystem or
+  materialization failures are broadcast. Rank-invariant distributed objective
+  state is portable to single-process model-only evaluation; rank-dependent state
+  fails closed.
 - FSDP2 uses upstream distributed state-dict APIs for portable full training state.
   Checkpoint-disabled diagnostic runs are explicit and non-resumable. DeepSpeed
   checkpointing is not claimed and fails before training.
@@ -51,60 +56,68 @@ pre-redesign code is archive-only and is not a second active implementation.
 
 ## Verification evidence
 
-- Full source suite: **155 passed, 1 skipped**. The only skip is the POSIX launcher
+- Full source suite: **174 passed, 1 skipped**. The only skip is the POSIX launcher
   execution test on the current Windows host.
 - Ruff: clean across `src/trainomni` and `tests`.
 - Python compileall: passed with bytecode directed outside Framework.
 - Wheel: `trainomni-0.1.1-py3-none-any.whl` built successfully; SHA-256
-  `84cecdee98e7beccadd6a9c93e6cf77ac8559b4846a7836984c004afb3da4ffd`.
+  `ea8dac77822dbe036eccd3b21941c6a103162d5c95bf68bc8c075533f3943373`.
 - Isolated wheel import/CLI: version `0.1.1`; the current source catalog has 41
   builtin descriptors and CLI help passes.
-- Installed-wheel corrected-path subset: **61 passed**; its builtin source digest
-  exactly matches the editable tree (`690e0f0d0b7c61ed72b784faf66e9d6a898424eb48ff8cfc7b5fd72956ff6d1e`).
-- Installed-wheel execution subset: **12 passed**, covering strict execution and
-  checkpoint specs, deterministic rank data, world-size-one DDP/FSDP2 checkpoint
-  and resume, and the Windows DeepSpeed fail-closed gate.
+- Installed-wheel corrected-path subset: **69 passed**; its builtin source digest
+  exactly matches the editable tree (`98a53f8b96cf2f632274bb9416f28b9669be04527fc0adc0abc0b9c7a0ce63e6`).
+  The subset includes asset/data/cache/objective contracts, checkpoint and
+  rank-failure coordination, exact-resume Objective paths and two-rank Gloo.
 - Project-local Windows interpreter: `Framework/.venv/Scripts/python.exe`, Python
   3.12.13, Torch 2.13.0+cu130. It resolves CUDA 13.0 on an RTX 4060 Ti (compute 8.9),
   and a true-BF16 forward/backward plus AdamW update passed on `cuda:0`.
-- Tiny composite true-BF16 CUDA train/checkpoint/fresh-process exact resume/evaluate/
-  export passed with weighted multi-source data. Tiny monolithic CUDA train/resume/
-  evaluate/export also passed. Both record nonzero allocated/reserved GPU memory.
-- A real Qwen3.5 vision + MiniCPM5-1B chain ran connector alignment → multimodal
+- Historical pre-fix evidence: tiny composite true-BF16 CUDA train/checkpoint/
+  fresh-process exact resume/evaluate/export and tiny monolithic CUDA lifecycle
+  passed. These routes require current-tree CUDA revalidation.
+- Historical pre-fix evidence: a real Qwen3.5 vision + MiniCPM5-1B chain ran
+  connector alignment → multimodal
   pretraining → full-parameter SFT → offline dense-logit KD → offline-reference
   DPO on the RTX 4060 Ti. Every stage completed train/checkpoint/evaluate/export,
   component update evidence is nonzero, the final artifact strictly reloads and a
   fresh post-reload multimodal forward is finite. See
   `docs/verification/real-vlm-five-stage-20260821.md`.
-- Real native Linear-LoRA SFT and offline-reference DPO train/evaluate/export
+- Historical pre-fix evidence: native Linear-LoRA SFT and offline-reference DPO
+  train/evaluate/export
   passed across 219 vision/connector/LLM targets. Strict adapter reload is
   bit-identical to checkpoint logits. A real batch-size-2 run also passed unequal
   text lengths, one/two images per sample, unequal image grids and two-way
   gradient accumulation.
-- Real fresh-process exact resume passed independently for full-parameter SFT,
+- Historical pre-fix evidence: fresh-process exact resume passed independently for
+  full-parameter SFT,
   multimodal pretraining, connector alignment, offline dense-logit KD and
   offline-reference DPO. Named model tensors, logical AdamW state, runtime state,
   final metrics and update evidence match the corresponding uninterrupted run.
-- Real extension-route gates passed for a SHA-pinned task-local Objective,
+- Historical pre-fix evidence: extension-route gates passed for a SHA-pinned
+  task-local Objective,
   independent eager/SDPA runtime attention selection, two-source weighted data
   mixture, multimodal block-diagonal sequence packing and ordered video-frame
   input. All six routes completed BF16 CUDA train/checkpoint/evaluate with actual
   connector updates. See
   `docs/verification/real-vlm-extension-routes-20260821.md`.
-- Direct DDP and FSDP2 each executed a real process group on CUDA, performed
+- Historical pre-fix evidence: direct DDP and FSDP2 each executed a real process
+  group on CUDA, performed
   forward/backward/update, saved portable state, resumed exactly and re-evaluated.
   The target Qwen3.5-vision/MiniCPM5 model additionally completed two-step DDP and
   FSDP2 training plus held-out evaluation on the RTX 4060 Ti. These are honest
   world-size-one backend gates; multi-rank remains server work.
-- Two CPU/Gloo ranks additionally passed unequal-denominator accumulated DDP loss
-  against a single global-batch oracle and coordinated rank-zero checkpoint and
-  run-identity filesystem failures without deadlock.
-- A deterministic medium fixture was built from 300 diagram and 1,280 InterGPS
+- The current tree passes a two-rank CPU/Gloo unequal-denominator accumulated DDP
+  oracle, explicit objective-metric sum/weighted-mean oracle, rank-local runtime
+  capture failure, and rank-zero checkpoint/run-identity failure without deadlock.
+- Historical pre-fix evidence: a deterministic medium fixture was built from 300
+  diagram and 1,280 InterGPS
   rows. Connector alignment, full multimodal CPT, full SFT, LoRA SFT, cached dense
   KD, cached-reference DPO and LoRA DPO each completed 16 distinct-data optimizer
   steps: **7 routes / 112 steps**. All gradients and required component updates
   were finite/nonzero. See
   `docs/verification/real-vlm-medium-data-20260822.md`.
+- Current-tree real-VLM/CUDA revalidation is pending. Historical runs are not
+  presented as validation of the corrected cache, identity, metric or checkpoint
+  paths.
 
 ## Explicitly outside v0.1.1
 

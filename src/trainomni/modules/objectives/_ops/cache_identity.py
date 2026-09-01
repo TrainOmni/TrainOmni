@@ -25,30 +25,34 @@ def digest_tensor(value: str, *, device=None) -> torch.Tensor:
 
 
 def _expected_rows(inputs: Mapping, labels: torch.Tensor, *, ignore_index: int):
+    if labels.ndim != 2:
+        raise ObjectiveError("cache identity labels must be [batch, sequence]")
     input_ids = inputs.get("input_ids")
     if not isinstance(input_ids, torch.Tensor) or input_ids.shape != labels.shape:
         raise ObjectiveError("cache identity requires input_ids aligned with labels")
     attention = inputs.get("attention_mask")
-    if attention is not None and (
-        not isinstance(attention, torch.Tensor) or attention.shape != labels.shape
-    ):
+    if attention is None:
+        attention = torch.ones_like(labels, dtype=torch.int64)
+    elif not isinstance(attention, torch.Tensor) or attention.shape != labels.shape:
         raise ObjectiveError("cache identity attention_mask must align with labels")
+    if not bool(torch.logical_or(attention.eq(0), attention.eq(1)).all().item()):
+        raise ObjectiveError("cache identity attention_mask must be binary")
     rows = []
     for index in range(labels.shape[0]):
-        valid = (
-            torch.ones_like(labels[index], dtype=torch.bool)
-            if attention is None
-            else attention[index].bool()
-        )
-        ids = input_ids[index][valid]
-        row_labels = labels[index][valid]
-        positions = torch.nonzero(row_labels.ne(ignore_index), as_tuple=False).flatten()
+        valid = attention[index].bool()
+        supervised = labels[index].ne(ignore_index)
+        if bool(torch.logical_and(supervised, torch.logical_not(valid)).any().item()):
+            raise ObjectiveError(
+                "cache identity has supervised targets outside the attention mask"
+            )
+        positions = torch.nonzero(supervised, as_tuple=False).flatten()
         if positions.numel() == 0:
             raise ObjectiveError("cache identity sample has no supervised target positions")
-        targets = row_labels.index_select(0, positions)
+        targets = labels[index].index_select(0, positions)
         rows.append(
             (
-                value_digest(ids),
+                value_digest(input_ids[index]),
+                value_digest(attention[index]),
                 value_digest(positions),
                 value_digest(targets),
             )
@@ -69,6 +73,7 @@ def validate_cache_binding(
     prefix = f"__cache_identity__{cache_field}__"
     expected_fields = {
         "input_ids": prefix + "input_ids_sha256",
+        "attention_mask": prefix + "attention_mask_sha256",
         "positions": prefix + "supervised_positions_sha256",
         "targets": prefix + "target_token_ids_sha256",
         "producer": prefix + "producer_identity_sha256",
@@ -81,9 +86,15 @@ def validate_cache_binding(
         )
     rows = _expected_rows(inputs, labels, ignore_index=ignore_index)
     producer = digest_tensor(producer_identity_sha256)
-    for index, (input_digest, position_digest, target_digest) in enumerate(rows):
+    for index, (
+        input_digest,
+        attention_digest,
+        position_digest,
+        target_digest,
+    ) in enumerate(rows):
         expected = {
             "input_ids": digest_tensor(input_digest),
+            "attention_mask": digest_tensor(attention_digest),
             "positions": digest_tensor(position_digest),
             "targets": digest_tensor(target_digest),
             "producer": producer,

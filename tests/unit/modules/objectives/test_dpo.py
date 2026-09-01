@@ -16,11 +16,16 @@ from trainomni.runtime.loop.step import execute_forward_plan
 PRODUCER = "b" * 64
 
 
-def binding(field, input_ids, labels, branch):
+def binding(field, input_ids, labels, branch, attention_mask=None):
+    if attention_mask is None:
+        attention_mask = torch.ones_like(labels)
     positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
     prefix = f"__cache_identity__{field}__"
     return {
         prefix + "input_ids_sha256": digest_tensor(value_digest(input_ids[0])).unsqueeze(0),
+        prefix + "attention_mask_sha256": digest_tensor(
+            value_digest(attention_mask[0])
+        ).unsqueeze(0),
         prefix + "supervised_positions_sha256": digest_tensor(
             value_digest(positions)
         ).unsqueeze(0),
@@ -110,7 +115,7 @@ def test_offline_reference_dpo_matches_oracle_and_both_branches_have_gradient() 
     bundle.total.backward()
     assert torch.count_nonzero(chosen_logits.grad) > 0
     assert torch.count_nonzero(rejected_logits.grad) > 0
-    assert int(bundle.metrics["preference_pairs"]) == 1
+    assert int(bundle.metrics["preference_pairs"].numerator) == 1
 
 
 def test_dpo_rejects_non_fp32_reference_cache() -> None:
@@ -211,3 +216,198 @@ def test_dpo_cannot_declare_media_as_a_branch_varying_field() -> None:
             reference_producer_identity_sha256=PRODUCER,
             branch_sequence_fields=("input_ids", "pixel_values"),
         )
+
+
+def test_dpo_padding_layout_collision_fails_before_policy_forward() -> None:
+    producer_attention = torch.tensor([[1, 1, 1, 0]])
+    producer_chosen = torch.tensor([[1, 2, 3, 0]])
+    producer_rejected = torch.tensor([[1, 2, 4, 0]])
+    producer_chosen_labels = torch.tensor([[-100, 2, 3, -100]])
+    producer_rejected_labels = torch.tensor([[-100, 2, 4, -100]])
+    consumer_attention = torch.tensor([[0, 1, 1, 1]])
+    consumer_chosen = torch.tensor([[0, 1, 2, 3]])
+    consumer_rejected = torch.tensor([[0, 1, 2, 4]])
+    consumer_chosen_labels = torch.tensor([[-100, -100, 2, 3]])
+    consumer_rejected_labels = torch.tensor([[-100, -100, 2, 4]])
+    batch = OmniBatch(
+        sample_ids=("padding-pair",),
+        model_inputs={"input_ids": consumer_chosen},
+        labels=consumer_chosen,
+        supervision={
+            "chosen_inputs": {
+                "input_ids": consumer_chosen,
+                "attention_mask": consumer_attention,
+            },
+            "rejected_inputs": {
+                "input_ids": consumer_rejected,
+                "attention_mask": consumer_attention,
+            },
+            "chosen_labels": consumer_chosen_labels,
+            "rejected_labels": consumer_rejected_labels,
+            "chosen_reference_logps": torch.zeros(1, 3),
+            "rejected_reference_logps": torch.zeros(1, 3),
+            **binding(
+                "chosen_reference_logps",
+                producer_chosen,
+                producer_chosen_labels,
+                1,
+                producer_attention,
+            ),
+            **binding(
+                "rejected_reference_logps",
+                producer_rejected,
+                producer_rejected_labels,
+                2,
+                producer_attention,
+            ),
+        },
+    )
+
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, **kwargs):
+            self.calls += 1
+            return {"logits": torch.zeros(*kwargs["input_ids"].shape, 6)}
+
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="identity mismatch"):
+        execute_forward_plan(
+            model=policy,
+            objective=DPOObjective(
+                DPOConfig(reference_producer_identity_sha256=PRODUCER)
+            ),
+            batch=batch,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0
+
+
+@pytest.mark.parametrize("field", ["token_type_ids", "position_ids", "cache_position"])
+def test_dpo_prompt_sequence_context_mismatch_fails_before_forward(field: str) -> None:
+    batch = make_batch()
+    supervision = dict(batch.supervision)
+    chosen_inputs = dict(supervision["chosen_inputs"])
+    rejected_inputs = dict(supervision["rejected_inputs"])
+    chosen_inputs[field] = torch.arange(4).unsqueeze(0)
+    rejected_inputs[field] = chosen_inputs[field].clone()
+    rejected_inputs[field][0, 0] += 1
+    supervision["chosen_inputs"] = chosen_inputs
+    supervision["rejected_inputs"] = rejected_inputs
+    corrupted = OmniBatch(
+        batch.sample_ids,
+        batch.model_inputs,
+        batch.labels,
+        supervision,
+    )
+
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, **kwargs):
+            self.calls += 1
+            return {"logits": torch.zeros(*kwargs["input_ids"].shape, 6)}
+
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="common prompt sequence field"):
+        execute_forward_plan(
+            model=policy,
+            objective=DPOObjective(
+                DPOConfig(reference_producer_identity_sha256=PRODUCER)
+            ),
+            batch=corrupted,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0
+
+
+def test_dpo_response_sequence_context_may_differ() -> None:
+    batch = make_batch()
+    supervision = dict(batch.supervision)
+    chosen_inputs = dict(supervision["chosen_inputs"])
+    rejected_inputs = dict(supervision["rejected_inputs"])
+    chosen_inputs["position_ids"] = torch.arange(4).unsqueeze(0)
+    rejected_inputs["position_ids"] = chosen_inputs["position_ids"].clone()
+    rejected_inputs["position_ids"][0, 2:] += 10
+    supervision["chosen_inputs"] = chosen_inputs
+    supervision["rejected_inputs"] = rejected_inputs
+    varied = OmniBatch(
+        batch.sample_ids,
+        batch.model_inputs,
+        batch.labels,
+        supervision,
+    )
+    plan = DPOObjective(
+        DPOConfig(reference_producer_identity_sha256=PRODUCER)
+    ).plan(varied, ObjectiveContext(0, 0))
+    assert len(plan.requests) == 2
+
+
+def test_dpo_prompt_attention_layout_mismatch_fails_with_self_consistent_cache() -> None:
+    chosen_ids = torch.tensor([[9, 1, 2, 3]])
+    rejected_ids = torch.tensor([[1, 0, 2, 4]])
+    chosen_attention = torch.tensor([[0, 1, 1, 1]])
+    rejected_attention = torch.tensor([[1, 0, 1, 1]])
+    chosen_labels = torch.tensor([[-100, -100, 2, 3]])
+    rejected_labels = torch.tensor([[-100, -100, 2, 4]])
+    batch = OmniBatch(
+        sample_ids=("attention-context",),
+        model_inputs={"input_ids": chosen_ids},
+        labels=chosen_ids,
+        supervision={
+            "chosen_inputs": {
+                "input_ids": chosen_ids,
+                "attention_mask": chosen_attention,
+            },
+            "rejected_inputs": {
+                "input_ids": rejected_ids,
+                "attention_mask": rejected_attention,
+            },
+            "chosen_labels": chosen_labels,
+            "rejected_labels": rejected_labels,
+            "chosen_reference_logps": torch.zeros(1, 3),
+            "rejected_reference_logps": torch.zeros(1, 3),
+            **binding(
+                "chosen_reference_logps",
+                chosen_ids,
+                chosen_labels,
+                1,
+                chosen_attention,
+            ),
+            **binding(
+                "rejected_reference_logps",
+                rejected_ids,
+                rejected_labels,
+                2,
+                rejected_attention,
+            ),
+        },
+    )
+
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, **kwargs):
+            self.calls += 1
+            return {"logits": torch.zeros(*kwargs["input_ids"].shape, 6)}
+
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="valid mask differ"):
+        execute_forward_plan(
+            model=policy,
+            objective=DPOObjective(
+                DPOConfig(reference_producer_identity_sha256=PRODUCER)
+            ),
+            batch=batch,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0

@@ -23,6 +23,8 @@ The replacement implementation currently has an executable first vertical slice:
 - model-default semantic attention policy and run-level attention-kernel boundary;
 - causal-LM, offline dense-logit KD and offline-reference DPO Objectives with
   FP32 numerics, explicit masks/reductions and multi-forward planning;
+- explicit ObjectiveMetric sum or numerator/denominator weighted-mean semantics
+  across unequal microbatches and data-parallel ranks;
 - full/component/freeze and native Linear-LoRA parameter policies
   (`train_bias=false`; trained bias fails closed);
 - AdamW, scheduler, accumulation, clipping, FP32/BF16/FP16 precision contracts;
@@ -34,8 +36,9 @@ The replacement implementation currently has an executable first vertical slice:
 - optional Linux DeepSpeed ZeRO adapter with explicit fail-closed checkpoint and
   platform boundaries;
 - atomic split model/optimizer/scheduler/objective/data/RNG checkpoints;
-- coordinated primary-rank filesystem failures and portable model-only objective
-  restore when distributed objective state is rank-invariant;
+- coordinated all-rank local runtime-capture and primary-rank filesystem failures,
+  plus portable model-only objective restore when distributed objective state is
+  rank-invariant;
 - explicit checkpoint-disabled diagnostic runs that retain identities/metrics;
 - structured run identity, metrics and exact fresh-process resume;
 - explicit finite-source packer flush and partial/drop-last behavior, with
@@ -62,9 +65,11 @@ Important documents:
 - resumable sequence packing and attention isolation: docs/contracts/sequence-packing.md
 - verified support and explicit non-claims: docs/verification/support-matrix.md
 - current Windows CUDA development environment: docs/verification/windows-cuda-environment.md
-- real VLM five-stage CUDA evidence: docs/verification/real-vlm-five-stage-20260821.md
-- real VLM five-route exact-resume evidence: docs/verification/real-vlm-exact-resume-20260821.md
-- real VLM custom-objective/attention/mixture/packing/video evidence:
+- historical pre-fix real VLM five-stage CUDA evidence:
+  docs/verification/real-vlm-five-stage-20260821.md
+- historical pre-fix real VLM five-route exact-resume evidence:
+  docs/verification/real-vlm-exact-resume-20260821.md
+- historical pre-fix real VLM custom-objective/attention/mixture/packing/video evidence:
   docs/verification/real-vlm-extension-routes-20260821.md
 - distributed architecture, dense/MoE and B200/Ascend boundaries:
   docs/architecture/distributed-execution.md
@@ -104,9 +109,10 @@ isolation, not a security sandbox.
 The current Windows development interpreter is `Framework/.venv/Scripts/python.exe`.
 It contains CUDA Torch and is excluded from Git; launchers still require an explicit
 `TRAINOMNI_PYTHON`, so a checkout never silently chooses an environment. Production
-dependency locking remains separate release work. Real-checkpoint single-GPU
-compatibility is now validated for the documented five-stage chain and its five
-fresh-process exact-resume routes. Direct DDP and FSDP2 have real one-rank CUDA
-execution/checkpoint/resume evidence; actual multi-rank Linux/NCCL and
-Ascend/HCCL remain server gates.
+dependency locking remains separate release work. The documented single-GPU
+compatibility evidence for the five-stage chain and its five fresh-process resume
+routes is historical and predates the corrected current tree. The same applies to
+the one-rank CUDA DDP/FSDP2 runs. Current-tree automated and two-rank CPU/Gloo
+verification passes, while real-VLM CUDA revalidation, actual multi-rank
+Linux/NCCL and Ascend/HCCL remain deployment gates.
 The pre-redesign implementation remains archived and is not part of this source tree.

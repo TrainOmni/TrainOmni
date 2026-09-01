@@ -13,7 +13,7 @@ from torch import nn
 
 from trainomni.contracts.batch import OmniBatch
 from trainomni.contracts.forward import ForwardPlan, ForwardRequest, OutputRequirements
-from trainomni.contracts.loss import LossBundle, LossTerm
+from trainomni.contracts.loss import LossBundle, LossTerm, ObjectiveMetric
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import CheckpointError
 from trainomni.modules.objectives.protocol import ObjectiveRequirements
@@ -35,7 +35,17 @@ class ScalarModel(nn.Module):
 
 class WeightedMeanObjective:
     def requirements(self):
-        return ObjectiveRequirements(outputs=OutputRequirements(logits=True))
+        return ObjectiveRequirements(
+            outputs=OutputRequirements(logits=True),
+            metric_aggregations=(
+                ("accuracy", "weighted_mean"),
+                ("chosen_tokens", "sum"),
+                ("delta", "weighted_mean"),
+                ("preference_pairs", "sum"),
+                ("rejected_tokens", "sum"),
+                ("supervised_tokens", "sum"),
+            ),
+        )
 
     def plan(self, batch, context: ObjectiveContext):
         return ForwardPlan.single(
@@ -56,6 +66,20 @@ class WeightedMeanObjective:
         return LossBundle(
             total=value,
             terms={"mse": LossTerm(value, 1.0, numerator, denominator)},
+            metrics={
+                "preference_pairs": ObjectiveMetric.sum(denominator.detach()),
+                "supervised_tokens": ObjectiveMetric.sum(denominator.detach()),
+                "chosen_tokens": ObjectiveMetric.sum(2 * denominator.detach()),
+                "rejected_tokens": ObjectiveMetric.sum(3 * denominator.detach()),
+                "accuracy": ObjectiveMetric.weighted_mean(
+                    batch.labels.gt(0).sum(dtype=torch.float32),
+                    denominator.detach(),
+                ),
+                "delta": ObjectiveMetric.weighted_mean(
+                    batch.labels.sum(dtype=torch.float32),
+                    denominator.detach(),
+                ),
+            },
         )
 
     def state_dict(self):
@@ -120,6 +144,16 @@ class Stateful:
     def load_state_dict(self, state):
         if state:
             raise RuntimeError("state must be empty")
+
+
+class RankFailingStateful(Stateful):
+    def __init__(self, rank: int) -> None:
+        self.rank = rank
+
+    def state_dict(self):
+        if self.rank == 1:
+            raise RuntimeError("injected rank-local objective state failure")
+        return {}
 
 
 def _run_spec(root: Path) -> RunSpec:
@@ -204,6 +238,34 @@ def _rank_main(rank: int, world_size: int, output_text: str, port: int) -> None:
         weights = [None] * process.world_size
         torch.distributed.all_gather_object(weights, float(model.weight.detach()))
 
+        local_capture_root = root / "checkpoint-local-capture-failure"
+        local_capture_manager = CheckpointManager(
+            root=local_capture_root,
+            task_digest="a" * 64,
+            run_digest="c" * 64,
+            module_lock={"fixture": "b" * 64},
+            process=process,
+        )
+        try:
+            local_capture_manager.save(
+                global_step=1,
+                micro_step=0,
+                model=model,
+                optimizer=engine.optimizer,
+                objective=RankFailingStateful(rank),
+                stream=Stateful(),
+            )
+        except CheckpointError as exc:
+            local_capture_error = str(exc)
+        else:
+            raise AssertionError("rank-local checkpoint failure did not propagate")
+        local_capture_errors = [None] * process.world_size
+        torch.distributed.all_gather_object(
+            local_capture_errors,
+            local_capture_error,
+        )
+        local_capture_step_exists = local_capture_manager.step_path(1).exists()
+
         failing_root = root / "checkpoint-failure"
         if process.is_primary:
             (failing_root / "step-00000001").mkdir(parents=True)
@@ -253,6 +315,9 @@ def _rank_main(rank: int, world_size: int, output_text: str, port: int) -> None:
                         "expected_weight": expected_weight,
                         "loss": record.loss,
                         "expected_loss": expected_loss,
+                        "objective_metrics": record.objective_metrics,
+                        "local_capture_errors": local_capture_errors,
+                        "local_capture_step_exists": local_capture_step_exists,
                         "checkpoint_errors": checkpoint_errors,
                         "materialize_errors": materialize_errors,
                     },

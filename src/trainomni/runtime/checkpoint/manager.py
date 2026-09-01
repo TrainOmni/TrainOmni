@@ -138,7 +138,6 @@ class CheckpointManager:
             raise CheckpointError("checkpoints are only valid at optimizer-step boundaries")
         directory = self.step_path(global_step)
         staging = self.root / f".{directory.name}.{uuid.uuid4().hex}.tmp"
-        runtime_metadata = dict(runtime_metadata or {})
         identity = self._identity(
             task_digest=self.task_digest,
             run_digest=self.run_digest,
@@ -146,20 +145,60 @@ class CheckpointManager:
             global_step=global_step,
             micro_step=micro_step,
         )
+        local_runtime = None
+        local_failure = None
+        try:
+            runtime_metadata = dict(runtime_metadata or {})
+            local_runtime = {
+                "scheduler": None if scheduler is None else scheduler.state_dict(),
+                "objective": dict(objective.state_dict()),
+                "stream": dict(stream.state_dict()),
+                "scaler": None if scaler is None else scaler.state_dict(),
+                "rng": capture_rng_state(),
+                "runtime_metadata": runtime_metadata,
+            }
+        except Exception as exc:  # noqa: BLE001 - synchronize rank-local capture
+            local_failure = exc
+        if self.process is not None:
+            self.process.propagate_rank_failure(
+                local_failure,
+                owner="checkpoint runtime capture",
+                error_type=CheckpointError,
+            )
+        elif local_failure is not None:
+            raise CheckpointError(
+                "checkpoint runtime capture failed on rank 0: "
+                f"{type(local_failure).__name__}: {local_failure}"
+            ) from local_failure
+        if local_runtime is None:  # pragma: no cover - guarded by coordinated failure
+            raise CheckpointError("checkpoint runtime capture produced no state")
+
         captured_model = None
         captured_optimizer = None
+        adapter_failure = None
         if self.state_adapter is not None:
-            captured_model, captured_optimizer = self.state_adapter.capture(
-                model, optimizer
-            )
-        local_runtime = {
-            "scheduler": None if scheduler is None else scheduler.state_dict(),
-            "objective": dict(objective.state_dict()),
-            "stream": dict(stream.state_dict()),
-            "scaler": None if scaler is None else scaler.state_dict(),
-            "rng": capture_rng_state(),
-            "runtime_metadata": runtime_metadata,
-        }
+            try:
+                # FSDP2 capture may itself contain collectives.  All pure local
+                # runtime state has already passed the all-rank outcome phase;
+                # exceptions raised after adapter capture returns are coordinated
+                # below.  A backend-internal collective failure remains the
+                # distributed backend's timeout/error boundary.
+                captured_model, captured_optimizer = self.state_adapter.capture(
+                    model, optimizer
+                )
+            except Exception as exc:  # noqa: BLE001 - coordinate returned failures
+                adapter_failure = exc
+            if self.process is not None:
+                self.process.propagate_rank_failure(
+                    adapter_failure,
+                    owner="checkpoint state-adapter capture",
+                    error_type=CheckpointError,
+                )
+            elif adapter_failure is not None:
+                raise CheckpointError(
+                    "checkpoint state-adapter capture failed on rank 0: "
+                    f"{type(adapter_failure).__name__}: {adapter_failure}"
+                ) from adapter_failure
         rank_states = None
         if self._world_size > 1:
             if self._is_primary:

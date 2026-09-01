@@ -114,6 +114,29 @@ def test_columnar_task_identity_excludes_physical_paths_but_keeps_manifest() -> 
     assert dict(module_lock(changed)) != dict(module_lock(left_task))
 
 
+def test_unpinned_columnar_task_identity_keeps_declared_physical_paths() -> None:
+    left = task_payload()
+    left["data"]["source"] = {
+        "module": "data_source:trainomni/parquet@1",
+        "config": {
+            "dataset_id": "diagnostic",
+            "paths": ["D:/diagnostic-a/*.parquet"],
+        },
+    }
+    right = task_payload()
+    right["data"]["source"] = {
+        "module": "data_source:trainomni/parquet@1",
+        "config": {
+            "dataset_id": "diagnostic",
+            "paths": ["D:/diagnostic-b/*.parquet"],
+        },
+    }
+    left_task = TaskSpec.from_mapping(left)
+    right_task = TaskSpec.from_mapping(right)
+    assert left_task.digest != right_task.digest
+    assert dict(module_lock(left_task)) != dict(module_lock(right_task))
+
+
 def test_named_child_sources_are_canonical_and_part_of_task_identity() -> None:
     left = task_payload()
     left["data"]["sources"] = {

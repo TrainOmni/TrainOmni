@@ -42,12 +42,31 @@ normalization before clipping and stepping. This makes token-, sample- and
 pair-mean objectives correct when local sequence lengths differ. A custom
 objective must not hide a second batch-size normalization inside its numerator.
 
+Every named metric must be an `ObjectiveMetric`; raw scalar metrics fail closed.
+Counts use `ObjectiveMetric.sum(count)`. Means use
+`ObjectiveMetric.weighted_mean(numerator, denominator)`. The engine sums those
+states across microbatches and ranks before producing the final value, so a custom
+objective must never return a local mean without its weight. `requirements()`
+must also declare the fixed `(metric_name, aggregation)` schema in
+`ObjectiveRequirements.metric_aggregations`; every computed bundle is checked
+against it before backward. For example:
+
+~~~python
+from trainomni.contracts import ObjectiveMetric
+
+metrics = {
+    "supervised_tokens": ObjectiveMetric.sum(mask.sum()),
+    "accuracy": ObjectiveMetric.weighted_mean(correct.sum(), mask.sum()),
+}
+~~~
+
 Offline caches are not trusted merely because their shard SHA-256 matches. The
 builtin KD/DPO objectives require per-sample bindings for expanded `input_ids`,
-true supervised positions, target token IDs, branch identity and one producer
-identity digest. That producer digest must itself bind the producing model,
-processor and tokenizer snapshots. Cache binding failures occur before policy
-forward.
+the full expanded `attention_mask`, absolute supervised positions, target token
+IDs, branch identity and one producer identity digest. That producer digest must
+itself bind the producing model, processor and tokenizer snapshots. Cache binding
+failures occur before policy forward. Tensor-cache schema v2 is rejected; producers
+must write schema v3.
 
 Supervision modules create labels, target positions, masks or preference branches.
 Objectives must still validate them before calculating loss. Loss weights and
@@ -117,9 +136,10 @@ Local modules are trusted executable Python, not a security sandbox. A loss that
 will be reused across tasks should graduate into a builtin Framework module with
 focused numerical and gradient-routing tests.
 
-A real task-local example is retained at
+A historical pre-fix task-local example is retained at
 `D:/Codex/TrainOmni/FrameworkValidation/modules/position_weighted_ce`. It changes
 causal CE weighting and label smoothing, then completes BF16 CUDA training,
-checkpointing and held-out evaluation without modifying Framework. Its compact
+checkpointing and held-out evaluation without modifying Framework. It predates the
+explicit `ObjectiveMetric` contract and requires current-tree revalidation. Its compact
 evidence is
 `D:/Codex/TrainOmni/FrameworkValidation/extension-validation/custom-objective.json`.

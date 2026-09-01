@@ -14,7 +14,7 @@ from trainomni.contracts.forward import (
     ForwardResult,
     OutputRequirements,
 )
-from trainomni.contracts.loss import LossBundle, LossTerm
+from trainomni.contracts.loss import LossBundle, LossTerm, ObjectiveMetric
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
@@ -40,6 +40,7 @@ class DPOObjective:
             cache_identity_fields.update(
                 {
                     prefix + "input_ids_sha256",
+                    prefix + "attention_mask_sha256",
                     prefix + "supervised_positions_sha256",
                     prefix + "target_token_ids_sha256",
                     prefix + "producer_identity_sha256",
@@ -48,6 +49,23 @@ class DPOObjective:
             )
         return ObjectiveRequirements(
             outputs=OutputRequirements(logits=True),
+            metric_aggregations=(
+                ("accuracy", "weighted_mean"),
+                ("chosen_policy_logp", "weighted_mean"),
+                ("chosen_reference_logp", "weighted_mean"),
+                ("chosen_reward", "weighted_mean"),
+                ("chosen_tokens", "sum"),
+                ("delta", "weighted_mean"),
+                ("dpo_logit", "weighted_mean"),
+                ("policy_ratio", "weighted_mean"),
+                ("preference_pairs", "sum"),
+                ("reference_ratio", "weighted_mean"),
+                ("rejected_policy_logp", "weighted_mean"),
+                ("rejected_reference_logp", "weighted_mean"),
+                ("rejected_reward", "weighted_mean"),
+                ("rejected_tokens", "sum"),
+                ("reward_margin", "weighted_mean"),
+            ),
             supervision_fields=frozenset(
                 {
                     self.config.chosen_inputs_field,
@@ -182,21 +200,57 @@ class DPOObjective:
                 )
             },
             metrics={
-                "chosen_policy_logp": chosen_policy.mean().detach(),
-                "rejected_policy_logp": rejected_policy.mean().detach(),
-                "chosen_reference_logp": chosen_reference.mean().detach(),
-                "rejected_reference_logp": rejected_reference.mean().detach(),
-                "policy_ratio": policy_ratio.mean().detach(),
-                "reference_ratio": reference_ratio.mean().detach(),
-                "delta": delta.mean().detach(),
-                "dpo_logit": dpo_logit.mean().detach(),
-                "chosen_reward": chosen_reward.mean().detach(),
-                "rejected_reward": rejected_reward.mean().detach(),
-                "reward_margin": margin.mean().detach(),
-                "accuracy": margin.gt(0).float().mean().detach(),
-                "preference_pairs": pair_count.detach(),
-                "chosen_tokens": chosen_mask.sum().detach(),
-                "rejected_tokens": rejected_mask.sum().detach(),
+                "chosen_policy_logp": ObjectiveMetric.weighted_mean(
+                    chosen_policy.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "rejected_policy_logp": ObjectiveMetric.weighted_mean(
+                    rejected_policy.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "chosen_reference_logp": ObjectiveMetric.weighted_mean(
+                    chosen_reference.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "rejected_reference_logp": ObjectiveMetric.weighted_mean(
+                    rejected_reference.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "policy_ratio": ObjectiveMetric.weighted_mean(
+                    policy_ratio.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "reference_ratio": ObjectiveMetric.weighted_mean(
+                    reference_ratio.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "delta": ObjectiveMetric.weighted_mean(
+                    delta.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "dpo_logit": ObjectiveMetric.weighted_mean(
+                    dpo_logit.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "chosen_reward": ObjectiveMetric.weighted_mean(
+                    chosen_reward.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "rejected_reward": ObjectiveMetric.weighted_mean(
+                    rejected_reward.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "reward_margin": ObjectiveMetric.weighted_mean(
+                    margin.sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "accuracy": ObjectiveMetric.weighted_mean(
+                    margin.gt(0).sum(dtype=torch.float32).detach(),
+                    pair_count.detach(),
+                ),
+                "preference_pairs": ObjectiveMetric.sum(pair_count.detach()),
+                "chosen_tokens": ObjectiveMetric.sum(chosen_mask.sum().detach()),
+                "rejected_tokens": ObjectiveMetric.sum(rejected_mask.sum().detach()),
             },
         )
 
@@ -283,19 +337,27 @@ class DPOObjective:
     def _prompt_rows(self, inputs, labels, *, branch: str):
         input_ids = inputs["input_ids"]
         attention = inputs.get("attention_mask")
-        if attention is not None and (
-            not isinstance(attention, torch.Tensor) or attention.shape != labels.shape
-        ):
+        if attention is None:
+            attention = torch.ones_like(labels, dtype=torch.int64)
+        elif not isinstance(attention, torch.Tensor) or attention.shape != labels.shape:
             raise ObjectiveError(f"DPO {branch} attention_mask must align with labels")
+        if not bool(torch.logical_or(attention.eq(0), attention.eq(1)).all().item()):
+            raise ObjectiveError(f"DPO {branch} attention_mask must be binary")
         prompts = []
         for index in range(labels.shape[0]):
-            valid = (
-                torch.ones_like(labels[index], dtype=torch.bool)
-                if attention is None
-                else attention[index].bool()
-            )
-            ids = input_ids[index][valid]
-            row_labels = labels[index][valid]
+            valid = attention[index].bool()
+            if bool(
+                torch.logical_and(
+                    labels[index].ne(self.config.ignore_index),
+                    torch.logical_not(valid),
+                ).any().item()
+            ):
+                raise ObjectiveError(
+                    f"DPO {branch} has supervised targets outside the attention mask"
+                )
+            valid_positions = torch.nonzero(valid, as_tuple=False).flatten()
+            ids = input_ids[index].index_select(0, valid_positions)
+            row_labels = labels[index].index_select(0, valid_positions)
             supervised = torch.nonzero(
                 row_labels.ne(self.config.ignore_index), as_tuple=False
             ).flatten()
@@ -308,8 +370,58 @@ class DPOObjective:
                 raise ObjectiveError(
                     f"DPO {branch} labels do not define one masked common prompt prefix"
                 )
-            prompts.append(ids[:boundary].detach().cpu())
+            first_target = int(valid_positions[boundary].item())
+            prompts.append(
+                {
+                    "ids": ids[:boundary].detach().cpu(),
+                    "positions": valid_positions[:boundary].detach().cpu(),
+                    "attention_prefix": attention[index, :first_target].detach().cpu(),
+                    "first_target": first_target,
+                }
+            )
         return tuple(prompts)
+
+    @staticmethod
+    def _prompt_sequence_value(
+        value,
+        *,
+        row: int,
+        batch_size: int,
+        sequence_length: int,
+        positions: torch.Tensor,
+        field: str,
+        branch: str,
+    ) -> torch.Tensor:
+        if not isinstance(value, torch.Tensor):
+            raise ObjectiveError(
+                f"DPO {branch} branch sequence field {field!r} must be a tensor"
+            )
+        if value.ndim == 1 and value.shape[0] == sequence_length:
+            row_value = value
+        elif (
+            value.ndim == 2
+            and value.shape[0] == batch_size
+            and value.shape[-1] == sequence_length
+        ):
+            row_value = value[row]
+        elif (
+            value.ndim >= 3
+            and value.shape[-2] == batch_size
+            and value.shape[-1] == sequence_length
+        ):
+            row_value = value[..., row, :]
+        elif (
+            value.ndim >= 3
+            and value.shape[0] == batch_size
+            and value.shape[-1] == sequence_length
+        ):
+            row_value = value[row]
+        else:
+            raise ObjectiveError(
+                f"DPO {branch} branch sequence field {field!r} must align with "
+                "[batch, sequence]"
+            )
+        return row_value.detach().cpu().index_select(-1, positions)
 
     def _preflight_pair_alignment(
         self, *, chosen_inputs, rejected_inputs, chosen_labels, rejected_labels
@@ -321,11 +433,44 @@ class DPOObjective:
             rejected_inputs, rejected_labels, branch="rejected"
         )
         if len(chosen_prompts) != len(rejected_prompts) or any(
-            not torch.equal(chosen, rejected)
+            chosen["first_target"] != rejected["first_target"]
+            or not torch.equal(chosen["attention_prefix"], rejected["attention_prefix"])
+            or not torch.equal(chosen["ids"], rejected["ids"])
             for chosen, rejected in zip(chosen_prompts, rejected_prompts, strict=True)
         ):
-            raise ObjectiveError("DPO chosen/rejected common prompt tokens differ")
+            raise ObjectiveError(
+                "DPO chosen/rejected common prompt tokens or valid mask differ"
+            )
         varying = set(self.config.branch_sequence_fields)
+        for field in sorted(set(chosen_inputs) & varying):
+            if field in {"input_ids", "attention_mask"}:
+                continue
+            for row, (chosen, rejected) in enumerate(
+                zip(chosen_prompts, rejected_prompts, strict=True)
+            ):
+                chosen_value = self._prompt_sequence_value(
+                    chosen_inputs[field],
+                    row=row,
+                    batch_size=chosen_labels.shape[0],
+                    sequence_length=chosen_labels.shape[1],
+                    positions=chosen["positions"],
+                    field=field,
+                    branch="chosen",
+                )
+                rejected_value = self._prompt_sequence_value(
+                    rejected_inputs[field],
+                    row=row,
+                    batch_size=rejected_labels.shape[0],
+                    sequence_length=rejected_labels.shape[1],
+                    positions=rejected["positions"],
+                    field=field,
+                    branch="rejected",
+                )
+                if not self._equal_value(chosen_value, rejected_value):
+                    raise ObjectiveError(
+                        "DPO chosen/rejected common prompt sequence field "
+                        f"{field!r} differs"
+                    )
         for field in sorted(set(chosen_inputs) - varying):
             if not self._equal_value(chosen_inputs[field], rejected_inputs[field]):
                 raise ObjectiveError(

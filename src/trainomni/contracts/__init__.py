@@ -6,7 +6,7 @@ from .data import DataRecord
 from .distribution import DistributionHints, distribution_hints
 from .features import ModalFeatureBranch, ModalFeatures, ModalFeatureSet
 from .forward import ForwardPlan, ForwardRequest, ForwardResult, OutputRequirements
-from .loss import LossBundle, LossTerm
+from .loss import LossBundle, LossTerm, ObjectiveMetric
 from .sample import ContentBlock, Message, OmniSample
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "ModalFeatureBranch",
     "ModalFeatureSet",
     "ModalFeatures",
+    "ObjectiveMetric",
     "OmniBatch",
     "OmniSample",
     "OutputRequirements",

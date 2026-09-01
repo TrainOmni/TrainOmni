@@ -39,7 +39,7 @@ def test_causal_lm_matches_fp32_masked_token_oracle() -> None:
         shifted_logits, shifted_labels, ignore_index=-100, reduction="sum"
     ) / shifted_labels.ne(-100).sum()
     torch.testing.assert_close(bundle.total, expected)
-    assert int(bundle.metrics["supervised_tokens"]) == 2
+    assert int(bundle.metrics["supervised_tokens"].numerator) == 2
     bundle.total.backward()
     assert logits.grad is not None
     assert torch.count_nonzero(logits.grad) > 0

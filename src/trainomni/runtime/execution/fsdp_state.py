@@ -7,6 +7,13 @@ from typing import Any
 
 class FSDP2StateAdapter:
     name = "torch_fsdp2_full_state"
+    capture_is_collective = True
+    # get_state_dict owns the internal collective sequence. TrainOmni
+    # coordinates all pure rank-local runtime capture before entering it and
+    # coordinates exceptions once it returns; failures inside a stuck backend
+    # collective are bounded by the process-group timeout rather than by a
+    # second TrainOmni collective.
+    failure_boundary = "torch-distributed-process-group-timeout"
 
     @staticmethod
     def capture(model: Any, optimizer: Any):

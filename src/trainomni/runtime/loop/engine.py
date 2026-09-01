@@ -10,6 +10,7 @@ from typing import Any
 import torch
 
 from trainomni import __version__
+from trainomni.contracts.loss import ObjectiveMetric
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import CheckpointError, OptimizationError, SpecError
 from trainomni.runtime.checkpoint.manager import CheckpointManager
@@ -176,7 +177,7 @@ class TrainEngine:
     def _optimizer_step(self) -> StepMetrics:
         term_totals: dict[str, list[float]] = {}
         term_weights: dict[str, float] = {}
-        objective_metric_totals: dict[str, float] = {}
+        objective_metric_totals: dict[str, list[Any]] = {}
         local_normalization_denominator = 0.0
         accumulation = self.run.gradient_accumulation_steps
         for index in range(accumulation):
@@ -216,11 +217,19 @@ class TrainEngine:
                         f"loss term {name!r} changed weight across microbatches"
                     )
                 term_weights[name] = weight
-            for name, value in bundle.metrics.items():
-                if isinstance(value, torch.Tensor) and value.numel() == 1:
-                    objective_metric_totals[name] = objective_metric_totals.get(
-                        name, 0.0
-                    ) + float(value.detach().float().item())
+            for name, metric in bundle.metrics.items():
+                if not isinstance(metric, ObjectiveMetric):
+                    self.optimizer.zero_grad(set_to_none=True)
+                    raise OptimizationError(
+                        f"objective metric {name!r} has no aggregation contract"
+                    )
+                values = objective_metric_totals.setdefault(
+                    name,
+                    [metric.aggregation, 0.0, 0.0],
+                )
+                values[1] += float(metric.numerator.detach().float().item())
+                if metric.denominator is not None:
+                    values[2] += float(metric.denominator.detach().float().item())
 
         self.execution.unscale_gradients(self.scaler)
         global_normalization_denominator = self.process.reduce_float(
@@ -276,14 +285,27 @@ class TrainEngine:
         accumulated_loss = sum(
             term_weights[name] * value for name, value in loss_terms.items()
         )
-        objective_metrics = {
-            name: self.process.reduce_float(
-                value / accumulation,
-                reduction="mean",
+        objective_metrics = {}
+        for name, (aggregation, numerator, denominator) in objective_metric_totals.items():
+            global_numerator = self.process.reduce_float(
+                numerator,
+                reduction="sum",
                 device=self.device.device,
             )
-            for name, value in objective_metric_totals.items()
-        }
+            if aggregation == "sum":
+                objective_metrics[name] = global_numerator
+                continue
+            global_denominator = self.process.reduce_float(
+                denominator,
+                reduction="sum",
+                device=self.device.device,
+            )
+            if not math.isfinite(global_denominator) or global_denominator <= 0:
+                self.optimizer.zero_grad(set_to_none=True)
+                raise OptimizationError(
+                    f"objective metric {name!r} global denominator must be positive"
+                )
+            objective_metrics[name] = global_numerator / global_denominator
         data_metric_hook = getattr(self.stream, "metrics", None)
         data_metrics = (
             {} if not callable(data_metric_hook) else dict(data_metric_hook())

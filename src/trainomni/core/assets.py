@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from trainomni.specs.digest import identity_digest
 
@@ -48,7 +49,48 @@ _COLUMNAR_DATA_MODULES = frozenset(
 )
 
 
-def task_asset_provenance(task) -> AssetProvenance:
+def _resolved_location(value: object, *, task_root: Path | None) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value)
+    if not path.is_absolute() and task_root is not None:
+        path = task_root / path
+    return str(path.resolve())
+
+
+def _transformers_asset_location(
+    config, *, task_root: Path | None
+) -> tuple[object, bool]:
+    location = config.get(
+        "model_name_or_path",
+        config.get("processor_name_or_path"),
+    )
+    local_only = config.get("local_files_only") is True
+    if not isinstance(location, str) or not location:
+        return location, local_only
+    path = Path(location)
+    candidate = path if path.is_absolute() or task_root is None else task_root / path
+    is_local = local_only or candidate.is_dir()
+    if is_local:
+        return _resolved_location(location, task_root=task_root), True
+    return location, False
+
+
+def _columnar_path_identity(config, *, task_root: Path | None) -> object:
+    paths = config.get("paths")
+    if not isinstance(paths, (tuple, list)):
+        return paths
+    if task_root is None:
+        return tuple(paths)
+    return tuple(
+        _resolved_location(path, task_root=task_root)
+        if isinstance(path, str)
+        else path
+        for path in paths
+    )
+
+
+def task_asset_provenance(task, *, task_root: Path | None = None) -> AssetProvenance:
     entries = {}
     issues = []
     for index, reference in enumerate(task.module_refs()):
@@ -61,6 +103,14 @@ def task_asset_provenance(task) -> AssetProvenance:
                 {
                     "module": module_id,
                     "dataset_id": reference.config.get("dataset_id"),
+                    "paths": (
+                        "<physical-columnar-paths>"
+                        if strict
+                        else _columnar_path_identity(
+                            reference.config,
+                            task_root=task_root,
+                        )
+                    ),
                     "dataset_manifest_sha256": manifest,
                     "reproducible": strict,
                 }
@@ -75,30 +125,48 @@ def task_asset_provenance(task) -> AssetProvenance:
         manifest_pinned = isinstance(manifest, str) and bool(
             _SHA256.fullmatch(manifest)
         )
+        location, is_local = _transformers_asset_location(
+            reference.config,
+            task_root=task_root,
+        )
+        revision_pinned = isinstance(revision, str) and bool(
+            _IMMUTABLE_REVISION.fullmatch(revision)
+        )
         strict = bool(
             manifest_pinned
-            or isinstance(revision, str)
-            and _IMMUTABLE_REVISION.fullmatch(revision)
+            or revision_pinned
+            and not is_local
         )
         key = f"asset:{index:04d}:{module_id}"
         entries[key] = identity_digest(
-                {
-                    "module": module_id,
-                    "location": (
-                        "<physical-transformers-asset>"
-                        if manifest_pinned
-                        else reference.config.get(
-                            "model_name_or_path",
-                            reference.config.get("processor_name_or_path"),
-                        )
-                    ),
+            {
+                "module": module_id,
+                "location": (
+                    "<physical-transformers-asset>"
+                    if manifest_pinned
+                    else location
+                ),
                 "revision": revision,
                 "asset_manifest_sha256": manifest,
+                "asset_kind": (
+                    "manifest-pinned"
+                    if manifest_pinned
+                    else "local"
+                    if is_local
+                    else "remote"
+                ),
                 "reproducible": strict,
             }
         )
         if not strict:
-            issues.append(
-                f"{module_id} requires an immutable revision or asset_manifest_sha256"
-            )
+            if is_local:
+                issues.append(
+                    f"{module_id} local assets require asset_manifest_sha256; "
+                    "revision does not identify local payload bytes"
+                )
+            else:
+                issues.append(
+                    f"{module_id} requires an immutable revision or "
+                    "asset_manifest_sha256"
+                )
     return AssetProvenance(not issues, entries, tuple(issues))

@@ -16,6 +16,26 @@ from trainomni.core.context import ObjectiveContext
 class ObjectiveRequirements:
     outputs: OutputRequirements = field(default_factory=OutputRequirements)
     supervision_fields: frozenset[str] = frozenset()
+    metric_aggregations: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        names = [name for name, _ in self.metric_aggregations]
+        if any(not name for name in names) or len(names) != len(set(names)):
+            raise ValueError(
+                "objective metric_aggregations must contain unique non-empty names"
+            )
+        unknown = sorted(
+            {
+                aggregation
+                for _, aggregation in self.metric_aggregations
+                if aggregation not in {"sum", "weighted_mean"}
+            }
+        )
+        if unknown:
+            raise ValueError(
+                "objective metric_aggregations contains unknown semantics: "
+                + ", ".join(unknown)
+            )
 
 
 class ObjectiveModule(Protocol):

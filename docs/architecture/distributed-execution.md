@@ -34,12 +34,18 @@ Linux multi-rank checkpoint gate is implemented.
 - Every rank receives a deterministic disjoint source stream below transforms,
   packing and collation. Rank, world size, source cursor and local sample count
   are exact-resume state.
-- Loss terms reduce numerator and denominator globally. Scalar objective metrics
-  reduce across ranks. Peak memory uses a maximum reduction. Data counters are
+- Loss terms reduce numerator and denominator globally. Objective metrics declare
+  either a global sum or weighted-mean numerator/denominator and reduce that state
+  across microbatches/ranks. Unknown scalar semantics fail closed. Peak memory uses
+  a maximum reduction. Data counters are
   retained per rank in `data_metrics_by_rank`; TrainOmni does not guess whether a
   task-local counter should be summed or averaged.
-- Only rank zero writes shared run receipts. Every rank participates in state
-  collection and checkpoint barriers.
+- Only rank zero writes shared run receipts. Pure rank-local checkpoint state is
+  captured before an all-rank outcome exchange; any rank failure prevents gather
+  and filesystem work. Every rank then participates in state collection. FSDP2
+  state-adapter capture is an upstream collective boundary: failures after it
+  returns are coordinated, while a failure inside a stuck upstream collective is
+  bounded by the configured process-group timeout.
 
 `checkpoint.enabled=false` is an explicit training-only diagnostic mode. It still
 materializes immutable task/run/module/parameter identities and structured

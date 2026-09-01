@@ -27,7 +27,7 @@ def inspect_task(
     return {
         "name": task.name,
         "task_digest": task.digest,
-        "modules": dict(module_lock(task)),
+        "modules": dict(module_lock(task, task_root=path.parent)),
         "capabilities": tuple(sorted(report.capabilities.values)),
         "components": tuple(name for name, _ in task.model.components),
         "local_modules": tuple(str(item.module_id) for item in task.local_modules),

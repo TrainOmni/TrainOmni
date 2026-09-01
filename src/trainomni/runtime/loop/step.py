@@ -9,6 +9,7 @@ from typing import Any
 import torch
 
 from trainomni.contracts.forward import ForwardResult
+from trainomni.contracts.loss import ObjectiveMetric
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
 from trainomni.runtime.device.context import DeviceContext
@@ -93,4 +94,41 @@ def execute_forward_plan(
         raise ObjectiveError(
             "objective total must equal the weighted sum of named loss terms"
         )
+    for name, metric in loss.metrics.items():
+        if not isinstance(metric, ObjectiveMetric):
+            raise ObjectiveError(
+                f"objective metric {name!r} must declare explicit aggregation semantics"
+            )
+        values = {"numerator": metric.numerator}
+        if metric.denominator is not None:
+            values["denominator"] = metric.denominator
+        for field, value in values.items():
+            if not isinstance(value, torch.Tensor) or value.ndim != 0:
+                raise ObjectiveError(
+                    f"objective metric {name!r} {field} must be a scalar tensor"
+                )
+            scalar = float(value.detach().float().item())
+            if not math.isfinite(scalar):
+                raise ObjectiveError(
+                    f"objective metric {name!r} {field} is non-finite"
+                )
+        if metric.denominator is not None and float(
+            metric.denominator.detach().float().item()
+        ) <= 0:
+            raise ObjectiveError(
+                f"objective metric {name!r} denominator must be positive"
+            )
+    declared_metrics = dict(requirements.metric_aggregations)
+    if set(loss.metrics) != set(declared_metrics):
+        missing = sorted(set(declared_metrics) - set(loss.metrics))
+        extra = sorted(set(loss.metrics) - set(declared_metrics))
+        raise ObjectiveError(
+            "objective metrics differ from requirements: "
+            f"missing={missing}, extra={extra}"
+        )
+    for name, metric in loss.metrics.items():
+        if metric.aggregation != declared_metrics[name]:
+            raise ObjectiveError(
+                f"objective metric {name!r} aggregation differs from requirements"
+            )
     return loss

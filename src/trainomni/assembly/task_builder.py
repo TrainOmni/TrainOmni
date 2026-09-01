@@ -42,7 +42,9 @@ class TaskAssembly:
     provenance_issues: tuple[str, ...] = ()
 
 
-def module_lock(task: TaskSpec) -> MappingProxyType:
+def module_lock(
+    task: TaskSpec, *, task_root: Path | None = None
+) -> MappingProxyType:
     lock = {
         f"{index:04d}:{reference.module_id}": identity_digest(
             semantic_module_identity(reference)
@@ -62,7 +64,7 @@ def module_lock(task: TaskSpec) -> MappingProxyType:
             for source in task.local_modules
         }
     )
-    lock.update(task_asset_provenance(task).lock_entries)
+    lock.update(task_asset_provenance(task, task_root=task_root).lock_entries)
     return MappingProxyType(lock)
 
 
@@ -122,7 +124,7 @@ def build_task(
         processor = getattr(model_io, "processor", None)
     elif stream is not None:
         processor = getattr(stream.model_io, "processor", None)
-    provenance = task_asset_provenance(task)
+    provenance = task_asset_provenance(task, task_root=task_root)
     return TaskAssembly(
         stream=stream,
         evaluation_stream=evaluation_stream,
@@ -133,7 +135,7 @@ def build_task(
         parameter_policy=parameter_policy,
         parameter_selection=parameter_selection,
         components=built_model.components,
-        module_lock=module_lock(task),
+        module_lock=module_lock(task, task_root=task_root),
         processor=processor,
         reproducible=provenance.reproducible,
         provenance_issues=provenance.issues,

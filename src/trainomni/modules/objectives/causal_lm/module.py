@@ -12,7 +12,7 @@ from trainomni.contracts.forward import (
     ForwardResult,
     OutputRequirements,
 )
-from trainomni.contracts.loss import LossBundle, LossTerm
+from trainomni.contracts.loss import LossBundle, LossTerm, ObjectiveMetric
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
@@ -30,7 +30,10 @@ class CausalLMObjective:
         self.config = config
 
     def requirements(self) -> ObjectiveRequirements:
-        return ObjectiveRequirements(outputs=OutputRequirements(logits=True))
+        return ObjectiveRequirements(
+            outputs=OutputRequirements(logits=True),
+            metric_aggregations=(("supervised_tokens", "sum"),),
+        )
 
     def plan(self, batch: OmniBatch, context: ObjectiveContext) -> ForwardPlan:
         return ForwardPlan.single(
@@ -73,7 +76,9 @@ class CausalLMObjective:
                     denominator=denominator,
                 )
             },
-            metrics={"supervised_tokens": denominator.detach()},
+            metrics={
+                "supervised_tokens": ObjectiveMetric.sum(denominator.detach())
+            },
         )
 
     def state_dict(self) -> Mapping[str, Any]:

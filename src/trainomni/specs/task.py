@@ -31,14 +31,24 @@ _PHYSICAL_COLUMNAR_PATHS = ("<physical-columnar-paths>",)
 _PHYSICAL_TRANSFORMERS_ASSET = "<physical-transformers-asset>"
 
 
+def _valid_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 def _normalize_module_value(value: Mapping[str, Any], module_id: str) -> dict[str, Any]:
     normalized = dict(value)
     normalized["config"] = dict(value["config"])
-    if module_id in _RELOCATABLE_COLUMNAR_MODULES:
+    if module_id in _RELOCATABLE_COLUMNAR_MODULES and _valid_sha256(
+        normalized["config"].get("dataset_manifest_sha256")
+    ):
         normalized["config"]["paths"] = list(_PHYSICAL_COLUMNAR_PATHS)
     elif (
         module_id in _RELOCATABLE_TRANSFORMERS_MODULES
-        and normalized["config"].get("asset_manifest_sha256") is not None
+        and _valid_sha256(normalized["config"].get("asset_manifest_sha256"))
     ):
         for field in ("model_name_or_path", "processor_name_or_path"):
             if field in normalized["config"]:

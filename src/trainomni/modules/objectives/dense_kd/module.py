@@ -13,7 +13,7 @@ from trainomni.contracts.forward import (
     ForwardResult,
     OutputRequirements,
 )
-from trainomni.contracts.loss import LossBundle, LossTerm
+from trainomni.contracts.loss import LossBundle, LossTerm, ObjectiveMetric
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
@@ -36,10 +36,12 @@ class DenseKDObjective:
         prefix = f"__cache_identity__{self.config.teacher_logits_field}__"
         return ObjectiveRequirements(
             outputs=OutputRequirements(logits=True),
+            metric_aggregations=(("supervised_tokens", "sum"),),
             supervision_fields=frozenset(
                 {
                     self.config.teacher_logits_field,
                     prefix + "input_ids_sha256",
+                    prefix + "attention_mask_sha256",
                     prefix + "supervised_positions_sha256",
                     prefix + "target_token_ids_sha256",
                     prefix + "producer_identity_sha256",
@@ -145,7 +147,9 @@ class DenseKDObjective:
                     denominator=kd_denominator,
                 ),
             },
-            metrics={"supervised_tokens": denominator.detach()},
+            metrics={
+                "supervised_tokens": ObjectiveMetric.sum(denominator.detach())
+            },
         )
 
     def state_dict(self):
