@@ -25,5 +25,10 @@ class LoRAParameterConfig:
             raise ValueError("LoRA rank and alpha must be positive")
         if not 0 <= self.dropout < 1:
             raise ValueError("LoRA dropout must be in [0, 1)")
+        if self.train_bias:
+            raise ValueError(
+                "LoRA train_bias=true is unsupported because adapter-only "
+                "checkpoint identity does not include trained bias tensors"
+            )
         if not self.group_name:
             raise ValueError("LoRA group_name must not be empty")

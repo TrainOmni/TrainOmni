@@ -21,7 +21,8 @@ The replacement implementation currently has an executable first vertical slice:
 - model-default semantic attention policy and run-level attention-kernel boundary;
 - causal-LM, offline dense-logit KD and offline-reference DPO Objectives with
   FP32 numerics, explicit masks/reductions and multi-forward planning;
-- full/component/freeze and native Linear-LoRA parameter policies;
+- full/component/freeze and native Linear-LoRA parameter policies
+  (`train_bias=false`; trained bias fails closed);
 - AdamW, scheduler, accumulation, clipping, FP32/BF16/FP16 precision contracts;
 - component-scoped activation checkpointing;
 - optional `torch.compile` forward execution without compiled checkpoint keys;
@@ -32,7 +33,8 @@ The replacement implementation currently has an executable first vertical slice:
 - atomic split model/optimizer/scheduler/objective/data/RNG checkpoints;
 - explicit checkpoint-disabled diagnostic runs that retain identities/metrics;
 - structured run identity, metrics and exact fresh-process resume;
-- held-out evaluation, generic/Transformers/LoRA export and strict artifact reload.
+- held-out evaluation with config-addressed receipts, generic/Transformers/LoRA
+  export and strict artifact reload.
 
 The automated vertical slice reads separate task/run files, loads five generic
 local modules (ModelIO, encoder, connector, fusion and language), trains a tiny

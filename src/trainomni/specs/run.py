@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -610,4 +610,21 @@ class RunSpec:
 
     @property
     def digest(self) -> str:
+        # The checkpoint directory is a physical output location, not execution
+        # semantics.  Keeping it out of the run identity makes an otherwise
+        # identical run movable without weakening any of the resume checks for
+        # optimizer, scheduler, precision, topology, or batching configuration.
+        identity_projection = replace(
+            self,
+            checkpoint=replace(
+                self.checkpoint,
+                directory=Path("<physical-checkpoint-output>"),
+            ),
+        )
+        return identity_digest(identity_projection)
+
+    @property
+    def legacy_path_bound_digest(self) -> str:
+        """Pre-fix v1 digest retained only for same-path checkpoint resume."""
+
         return identity_digest(self)

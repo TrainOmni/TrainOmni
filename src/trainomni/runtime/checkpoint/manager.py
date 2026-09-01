@@ -40,6 +40,7 @@ class CheckpointManager:
         task_digest: str,
         run_digest: str,
         module_lock: Mapping[str, str],
+        compatible_run_digests: tuple[str, ...] = (),
         framework_version: str = "0.1.0",
         process: Any | None = None,
         state_adapter: Any | None = None,
@@ -47,6 +48,7 @@ class CheckpointManager:
         self.root = Path(root)
         self.task_digest = task_digest
         self.run_digest = run_digest
+        self.compatible_run_digests = frozenset(compatible_run_digests)
         self.module_lock = dict(sorted(module_lock.items()))
         self.framework_version = framework_version
         self.process = process
@@ -223,7 +225,12 @@ class CheckpointManager:
         self._barrier()
         return directory
 
-    def _read_manifest(self, checkpoint: Path) -> tuple[Path, CheckpointManifest]:
+    def _read_manifest(
+        self,
+        checkpoint: Path,
+        *,
+        require_run_digest: bool = True,
+    ) -> tuple[Path, CheckpointManifest]:
         directory = Path(checkpoint)
         manifest_path = directory / _MANIFEST_FILE
         if not manifest_path.is_file():
@@ -235,7 +242,7 @@ class CheckpointManager:
         if not isinstance(raw_manifest, Mapping):
             raise CheckpointError("checkpoint manifest root must be a mapping")
         manifest = CheckpointManifest.from_mapping(raw_manifest)
-        self._validate_manifest(manifest)
+        self._validate_manifest(manifest, require_run_digest=require_run_digest)
         return directory, manifest
 
     @staticmethod
@@ -287,7 +294,10 @@ class CheckpointManager:
         map_location: Any,
         objective: Any | None = None,
     ) -> CheckpointManifest:
-        directory, manifest = self._read_manifest(checkpoint)
+        directory, manifest = self._read_manifest(
+            checkpoint,
+            require_run_digest=False,
+        )
         model_path = self._validate_file(
             directory, manifest.model_file, manifest.model_sha256
         )
@@ -460,11 +470,19 @@ class CheckpointManager:
         self.loaded_runtime_metadata = dict(manifest.runtime_metadata)
         return manifest.global_step, manifest.micro_step
 
-    def _validate_manifest(self, manifest: CheckpointManifest) -> None:
+    def _validate_manifest(
+        self,
+        manifest: CheckpointManifest,
+        *,
+        require_run_digest: bool = True,
+    ) -> None:
         mismatches = []
         if manifest.task_digest != self.task_digest:
             mismatches.append("task_digest")
-        if manifest.run_digest != self.run_digest:
+        if require_run_digest and manifest.run_digest not in {
+            self.run_digest,
+            *self.compatible_run_digests,
+        }:
             mismatches.append("run_digest")
         if dict(manifest.module_lock) != self.module_lock:
             mismatches.append("module_lock")

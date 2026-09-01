@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -333,6 +334,54 @@ def test_separate_task_and_run_files_drive_the_same_runtime(tmp_path: Path) -> N
     assert evaluated.samples == 4
     assert evaluated.metrics["eval_loss"] > 0
     assert evaluated.receipt.is_file()
+    repeated = evaluate(
+        task_path=task_path,
+        run_path=run_path,
+        checkpoint=run_root / "outputs" / "checkpoints" / "step-00000004",
+        batches=2,
+        allow_local_code=True,
+    )
+    one_batch = evaluate(
+        task_path=task_path,
+        run_path=run_path,
+        checkpoint=run_root / "outputs" / "checkpoints" / "step-00000004",
+        batches=1,
+        allow_local_code=True,
+    )
+    assert repeated.receipt == evaluated.receipt
+    assert one_batch.receipt != evaluated.receipt
+    assert one_batch.receipt.is_file()
+    evaluated_payload = json.loads(evaluated.receipt.read_text(encoding="utf-8"))
+    one_batch_payload = json.loads(one_batch.receipt.read_text(encoding="utf-8"))
+    assert evaluated_payload["schema_version"] == 2
+    assert evaluated_payload["evaluation_digest"] == evaluated.receipt.stem
+    assert evaluated_payload["configuration"]["execution"]["batches"] == 2
+    assert one_batch_payload["configuration"]["execution"]["batches"] == 1
+
+    moved_checkpoint = tmp_path / "moved-checkpoint"
+    shutil.copytree(
+        run_root / "outputs" / "checkpoints" / "step-00000004",
+        moved_checkpoint,
+    )
+    evaluation_root = tmp_path / "evaluation-run"
+    evaluation_root.mkdir()
+    evaluation_run = create_run(evaluation_root, precision="bf16_mixed")
+    evaluation_payload = json.loads(evaluation_run.read_text(encoding="utf-8"))
+    evaluation_payload["per_device_batch_size"] = 1
+    evaluation_payload["checkpoint"]["directory"] = "other/checkpoints"
+    evaluation_run.write_text(json.dumps(evaluation_payload), encoding="utf-8")
+    moved_evaluation = evaluate(
+        task_path=task_path,
+        run_path=evaluation_run,
+        checkpoint=moved_checkpoint,
+        batches=1,
+        allow_local_code=True,
+    )
+    assert moved_evaluation.samples == 1
+    assert moved_evaluation.receipt.is_file()
+    moved_payload = json.loads(moved_evaluation.receipt.read_text(encoding="utf-8"))
+    assert moved_payload["configuration"]["execution"]["precision"] == "bf16_mixed"
+    assert moved_payload["configuration"]["execution"]["per_device_batch_size"] == 1
     exported = export_artifact(
         task_path=task_path,
         run_path=run_path,
@@ -341,6 +390,14 @@ def test_separate_task_and_run_files_drive_the_same_runtime(tmp_path: Path) -> N
     )
     assert exported.artifact.kind == "safetensors"
     assert len(exported.artifact.digest) == 64
+    moved_export = export_artifact(
+        task_path=task_path,
+        run_path=evaluation_run,
+        checkpoint=moved_checkpoint,
+        destination=tmp_path / "moved-export",
+        allow_local_code=True,
+    )
+    assert moved_export.artifact.kind == "safetensors"
     from safetensors.torch import load_file
 
     tensors = load_file(exported.artifact.uri)

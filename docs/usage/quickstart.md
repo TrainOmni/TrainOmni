@@ -126,7 +126,7 @@ A bounded training-only diagnostic can explicitly disable all checkpoint writes:
 ```yaml
 checkpoint:
   enabled: false
-  directory: outputs/checkpoints   # still anchors run identity/metrics
+  directory: outputs/checkpoints   # physical output location; not run identity
   every_steps: 100
 ```
 
@@ -141,7 +141,14 @@ $env:TRAINOMNI_PYTHON = 'D:\path\to\cuda-env\Scripts\python.exe'
 D:\path\to\Framework\launch\windows\trainomni.ps1 train --task D:\tasks\my-vlm\task.yaml --run D:\runs\baseline\run.yaml
 ```
 
-Resume, evaluate and export use the same task/run identities:
+Full-state resume requires the same semantic TaskSpec and RunSpec. The physical
+`checkpoint.directory` may move without changing RunSpec identity; all other run
+fields remain exact-resume inputs. Model-only evaluate/export validates checkpoint
+task/module/framework and file integrity, but may use a different execution
+device, precision, batch size and output directory:
+
+Pre-fix v1 checkpoints can still resume at their original configured output path.
+Movable full-state resume applies to checkpoints written with the corrected digest.
 
 ```text
 trainomni train --task task.yaml --run run.yaml --resume outputs/checkpoints/step-00000100

@@ -52,3 +52,11 @@ def test_lora_target_mismatch_fails_closed() -> None:
         LoRAParameterPolicy(
             LoRAParameterConfig(target_patterns=(r"missing\..*",))
         ).apply(Network())
+
+
+def test_lora_train_bias_fails_closed_before_model_mutation() -> None:
+    with pytest.raises(ValueError, match="train_bias=true is unsupported"):
+        LoRAParameterConfig(
+            target_patterns=(r"language\.0",),
+            train_bias=True,
+        )

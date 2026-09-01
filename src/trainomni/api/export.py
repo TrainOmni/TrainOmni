@@ -74,7 +74,7 @@ def export_artifact(
     )
     identity = {
         "task_digest": task.digest,
-        "run_digest": run.digest,
+        "run_digest": str(checkpoint_manifest["run_digest"]),
         "checkpoint_model_sha256": str(checkpoint_manifest["model_sha256"]),
         "checkpoint_manifest_sha256": file_sha256(manifest_path),
         "checkpoint_global_step": str(checkpoint_manifest["global_step"]),

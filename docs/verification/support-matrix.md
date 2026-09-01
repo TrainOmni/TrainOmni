@@ -39,6 +39,7 @@ which hardware was actually used.
 | --- | --- | --- |
 | Full, selected-component and freeze policies | verified | strict component resolution and explicit optimizer groups |
 | Native Linear-LoRA | verified on real VLM CUDA SFT and DPO | 219 explicit vision/connector/LLM Linear targets; train/evaluate/export pass and strict adapter reload is bit-identical to checkpoint logits |
+| LoRA trained bias | unsupported and fail-closed | `train_bias=true` is rejected during configuration; verified adapter identity covers LoRA tensors only |
 | QLoRA / quantized base weights | unsupported | no quantization backend is silently inferred |
 | AdamW, including `foreach=false` and per-group LR/weight decay | verified | optimizer type/version/state dtype recorded in checkpoint metadata |
 | AdamW8bit | unsupported | no bitsandbytes dependency or silent downgrade |
@@ -60,15 +61,16 @@ which hardware was actually used.
 | Exact resume | verified on real VLM CUDA routes | full SFT, pretraining, alignment, offline KD and offline DPO match uninterrupted logical model/AdamW/runtime state and final evidence after fresh-process resume |
 | Distributed runtime-state identity | implemented and world-size-one verified | every rank contributes scheduler/objective/data/scaler/RNG state; topology changes fail; multi-rank server gate remains |
 | FSDP2 portable full-state checkpoint | CUDA world-size-one verified | upstream distributed state-dict APIs bridge DTensor model/optimizer state to the atomic TrainOmni format; multi-rank exact resume remains a server gate |
-| Model-only evaluation/export load | verified | does not allocate/load optimizer state; objective restore is optional |
-| Held-out evaluation | verified | separate data stream, eval/inference/autocast/device semantics |
+| Model-only evaluation/export load | verified | does not allocate/load optimizer state; objective restore is optional; a validated training checkpoint may be relocated and consumed with a different evaluation/export RunSpec, while task/module/framework/file integrity remains strict |
+| Held-out evaluation | verified | separate data stream, eval/inference/autocast/device semantics; config-addressed immutable receipts allow multiple batch/device/precision configs per checkpoint and are idempotent per config |
 | Generic full-state safetensors export | verified | composite and monolithic fixtures |
 | Transformers `save_pretrained` export | verified in a fresh process | reloaded logits are bit-equal for the FP32 tiny model |
 | Native LoRA adapter export | verified | strict target/config/tensor/digest matching |
 | Task-local module extensions | verified on real VLM CUDA | a SHA-pinned external Objective owns a distinct position-weighted, label-smoothed FP32 CE and completes train/checkpoint/evaluate; all module kinds share descriptor/config/capability/source-hash rules |
 | Semantic attention policy | verified on real VLM CUDA | model-default and packed block-diagonal policies execute through the model boundary; incompatible packer/policy composition fails capability preflight |
 | Runtime attention kernel | eager and SDPA verified on real VLM CUDA | identical semantic Task ran with eager and SDPA chosen only by RunSpec; applied model boundaries are recorded; FlashAttention is not claimed |
-| Framework / Task / Run / Output root separation | verified | task and run digests are distinct; outputs are immutable receipts |
+| Framework / Task / Run / Output root separation | verified | task and run digests are distinct; physical `checkpoint.directory` is excluded from RunSpec identity while every semantic resume field remains strict; outputs are immutable receipts |
+| Parquet/Arrow source identity | verified as cursor compatibility only | paths, lightweight file metadata and fragment layout are checked; no full-file/content hash or content-provenance claim |
 
 ## Distributed and platform boundary
 

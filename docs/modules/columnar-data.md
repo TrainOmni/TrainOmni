@@ -83,6 +83,14 @@ The source cursor records dataset identity, topology, assigned fragments, epoch,
 fragment position, row position, and emitted count. Exact restore rejects file
 metadata, physical layout, assignment, or topology changes.
 
+This is a cursor-compatibility identity, not content-integrity provenance. The
+current Parquet/Arrow identity uses configured paths plus lightweight file and
+fragment metadata (including size, modification time, schema and physical
+layout); it does not hash complete files or row contents. A same-size byte change
+with a restored timestamp may therefore be invisible, while moving identical
+bytes to another path changes identity. Producers must own immutable object
+versions or external digests when content integrity is required.
+
 Current scope is local files. S3/object-store transport, node-local cache,
 prefetch, and construction of PyTorch worker processes remain separate
 storage/runtime modules. The source has deterministic worker partitioning, but

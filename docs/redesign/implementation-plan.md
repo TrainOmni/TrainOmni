@@ -222,7 +222,9 @@ first policies are:
 - connector-only;
 - selected-component full parameter;
 - complete full parameter;
-- native LoRA injection with explicit target resolution and adapter artifacts.
+- native LoRA injection with explicit target resolution and adapter artifacts;
+  `train_bias=false` is the verified boundary and `train_bias=true` fails during
+  configuration because bias tensors are not represented by the adapter identity.
 
 PEFT is a source reference, not a runtime dependency. Only the narrow LoRA behavior
 we actually support will be implemented and tested. QLoRA is not silently equated
@@ -242,7 +244,14 @@ Every checkpoint records:
 - framework version and source provenance.
 
 Resume is fail-closed for semantic or state incompatibility. Export is separate from
-checkpointing and must not erase training lineage.
+checkpointing and must not erase training lineage. The physical checkpoint output
+directory is excluded from RunSpec identity, so relocation alone does not invalidate
+exact resume. Full-state restore still compares every semantic run field. Model-only
+evaluation/export intentionally ignores the current execution RunSpec digest after
+validating the checkpoint TaskSpec, module lock, framework version, manifest and
+model/runtime file digests. Pre-fix v1 checkpoints retain same-path full-resume
+compatibility through their exact legacy path-bound digest; relocation applies to
+checkpoints written with the corrected identity.
 
 ## 10. Upstream extraction map
 

@@ -119,3 +119,46 @@ def test_collator_configured_modes_fail_closed() -> None:
     )
     with pytest.raises(SpecError, match="equal trailing shapes"):
         collator.collate(examples)
+
+
+def test_left_padding_with_position_dependent_fields_fails_closed() -> None:
+    examples = (
+        SupervisedExample(
+            "short",
+            {
+                "input_ids": torch.tensor([1, 2]),
+                "modal_positions": torch.tensor([0]),
+            },
+            torch.tensor([1, 2]),
+        ),
+        SupervisedExample(
+            "long",
+            {
+                "input_ids": torch.tensor([3, 4, 5]),
+                "modal_positions": torch.tensor([1]),
+            },
+            torch.tensor([3, 4, 5]),
+        ),
+    )
+    with pytest.raises(
+        SpecError,
+        match=r"left padding.*model_inputs\.modal_positions",
+    ):
+        MultimodalCollator(MultimodalCollatorConfig(padding_side="left")).collate(
+            examples
+        )
+
+
+def test_left_padding_without_position_dependent_fields_remains_supported() -> None:
+    examples = (
+        SupervisedExample(
+            "short", {"input_ids": torch.tensor([1, 2])}, torch.tensor([1, 2])
+        ),
+        SupervisedExample(
+            "long", {"input_ids": torch.tensor([3, 4, 5])}, torch.tensor([3, 4, 5])
+        ),
+    )
+    batch = MultimodalCollator(
+        MultimodalCollatorConfig(padding_side="left", pad_token_id=0)
+    ).collate(examples)
+    assert batch.model_inputs["input_ids"].tolist() == [[0, 1, 2], [3, 4, 5]]

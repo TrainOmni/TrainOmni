@@ -15,8 +15,26 @@ from .config import MultimodalCollatorConfig
 
 
 class MultimodalCollator:
+    _POSITION_DEPENDENT_FIELDS = frozenset({"position_ids", "cache_position", "rope_deltas"})
+
     def __init__(self, config: MultimodalCollatorConfig) -> None:
         self.config = config
+
+    @classmethod
+    def _position_dependent_paths(
+        cls,
+        value: Mapping[str, object],
+        *,
+        prefix: str,
+    ) -> tuple[str, ...]:
+        paths = []
+        for key, inner in value.items():
+            path = f"{prefix}.{key}"
+            if key.endswith("_positions") or key in cls._POSITION_DEPENDENT_FIELDS:
+                paths.append(path)
+            if isinstance(inner, Mapping):
+                paths.extend(cls._position_dependent_paths(inner, prefix=path))
+        return tuple(paths)
 
     def _pad_value(self, field: str):
         configured = self.config.field_pad_values.get(
@@ -88,9 +106,7 @@ class MultimodalCollator:
             shapes = {tuple(value.shape) for value in values}
             if mode == "stack":
                 if len(shapes) != 1:
-                    raise SpecError(
-                        f"collator stack requires equal shapes for {field}: {shapes}"
-                    )
+                    raise SpecError(f"collator stack requires equal shapes for {field}: {shapes}")
                 return torch.stack(tuple(values))
             if mode == "pad":
                 return self._pad_tensors(values, field=field)
@@ -99,9 +115,7 @@ class MultimodalCollator:
             if len(shapes) == 1:
                 return torch.stack(tuple(values))
             if any(value.ndim != 1 for value in values):
-                raise SpecError(
-                    f"collator cannot pad non-sequence tensors for {field}: {shapes}"
-                )
+                raise SpecError(f"collator cannot pad non-sequence tensors for {field}: {shapes}")
             return self._pad_tensors(values, field=field)
         if all(isinstance(value, Mapping) for value in values):
             if mode != "auto":
@@ -126,6 +140,28 @@ class MultimodalCollator:
     def collate(self, examples: Sequence[SupervisedExample]) -> OmniBatch:
         if not examples:
             raise SpecError("cannot collate an empty example sequence")
+        if self.config.padding_side == "left":
+            position_fields = sorted(
+                {
+                    path
+                    for example in examples
+                    for path in (
+                        *self._position_dependent_paths(
+                            example.model_inputs,
+                            prefix="model_inputs",
+                        ),
+                        *self._position_dependent_paths(
+                            example.supervision,
+                            prefix="supervision",
+                        ),
+                    )
+                }
+            )
+            if position_fields:
+                raise SpecError(
+                    "left padding is incompatible with position-dependent fields: "
+                    + ", ".join(position_fields)
+                )
         input_keys = set(examples[0].model_inputs)
         if any(set(example.model_inputs) != input_keys for example in examples[1:]):
             raise SpecError("model input keys differ within a batch")
@@ -149,9 +185,7 @@ class MultimodalCollator:
         return OmniBatch(
             sample_ids=tuple(example.sample_id for example in examples),
             model_inputs=model_inputs,
-            labels=self._stack(
-                [example.labels for example in examples], field="labels"
-            ),
+            labels=self._stack([example.labels for example in examples], field="labels"),
             supervision=supervision,
         )
 

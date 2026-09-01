@@ -43,6 +43,12 @@ Configured modes are strict. `stack` never falls back to padding; `concat` and
 unless explicitly assigned `list`. This prevents a variable number of images or
 patches from being silently batched with the wrong layout.
 
+Left padding is supported only when the sample has no explicit position anchors.
+Combining `padding_side: left` with `modal_positions`, any `*_positions` field,
+`position_ids`, `cache_position`, or `rope_deltas` fails before collation. The v1
+collator does not guess how a model-specific anchor should be rebased; such a
+model must use right padding or a task-local collator that owns that contract.
+
 Some models need specialized ownership beyond these primitives, such as coupled
 offset tensors, packed cross-sample media, or processor-specific Python objects.
 Those models register a collator module rather than adding model-name branches to

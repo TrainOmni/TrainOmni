@@ -68,6 +68,21 @@ def test_task_and_run_have_separate_stable_identities(tmp_path: Path) -> None:
     assert run.per_device_batch_size == 2
 
 
+def test_run_identity_excludes_only_physical_checkpoint_directory(
+    tmp_path: Path,
+) -> None:
+    first = run_payload(tmp_path / "first" / "checkpoints")
+    moved = run_payload(tmp_path / "moved" / "checkpoints")
+    assert RunSpec.from_mapping(first).digest == RunSpec.from_mapping(moved).digest
+    assert (
+        RunSpec.from_mapping(first).legacy_path_bound_digest
+        != RunSpec.from_mapping(moved).legacy_path_bound_digest
+    )
+
+    moved["per_device_batch_size"] = 3
+    assert RunSpec.from_mapping(first).digest != RunSpec.from_mapping(moved).digest
+
+
 def test_named_child_sources_are_canonical_and_part_of_task_identity() -> None:
     left = task_payload()
     left["data"]["sources"] = {

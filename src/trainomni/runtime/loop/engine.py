@@ -99,6 +99,7 @@ class TrainEngine:
             task_digest=task_digest,
             run_digest=run.digest,
             module_lock=module_lock,
+            compatible_run_digests=(run.legacy_path_bound_digest,),
             framework_version=__version__,
             process=self.process,
             state_adapter=getattr(self.execution, "state_adapter", None),
@@ -157,8 +158,7 @@ class TrainEngine:
             records.append(self._optimizer_step())
         if (
             self.run.checkpoint.enabled
-            and
-            self.global_step > starting_step
+            and self.global_step > starting_step
             and self.global_step % self.run.checkpoint.every_steps != 0
         ):
             self.save_checkpoint()
@@ -204,7 +204,9 @@ class TrainEngine:
         grad_norm = self.execution.clip_grad_norm(self.run.max_grad_norm)
         if not math.isfinite(grad_norm):
             self.optimizer.zero_grad(set_to_none=True)
-            raise OptimizationError("gradient norm is non-finite; optimizer step aborted")
+            raise OptimizationError(
+                "gradient norm is non-finite; optimizer step aborted"
+            )
         learning_rate = float(self.optimizer.param_groups[0]["lr"])
         evidence_snapshot = None
         evidence_spec = self.run.update_evidence
@@ -252,7 +254,9 @@ class TrainEngine:
             for name, value in objective_metric_totals.items()
         }
         data_metric_hook = getattr(self.stream, "metrics", None)
-        data_metrics = {} if not callable(data_metric_hook) else dict(data_metric_hook())
+        data_metrics = (
+            {} if not callable(data_metric_hook) else dict(data_metric_hook())
+        )
         data_metrics_by_rank = self.process.all_gather_metrics(data_metrics)
         record = StepMetrics(
             global_step=self.global_step,

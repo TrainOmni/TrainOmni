@@ -58,3 +58,7 @@ This verifies local Parquet/Arrow ingestion and deterministic source-level
 DP/worker partitioning. It does not claim S3 transport, node-local caching,
 asynchronous DataLoader execution, Linux multi-process execution, or Ascend
 multi-node throughput. Those are separate storage and runtime gates.
+
+Dataset identity here means path/metadata/fragment-layout and cursor
+compatibility. It is not a full-file hash, immutable object-version check, or
+content-integrity guarantee; those remain producer/storage responsibilities.

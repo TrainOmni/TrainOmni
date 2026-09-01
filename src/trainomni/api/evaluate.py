@@ -11,6 +11,7 @@ from typing import Any
 from trainomni.core.errors import SpecError
 from trainomni.runtime.evaluation import evaluate_batches
 from trainomni.runtime.random import seed_everything
+from trainomni.specs.digest import canonical_value, identity_digest
 
 from ._checkpoint import load_model_checkpoint
 from .train import assemble, load_resolved_run
@@ -41,7 +42,7 @@ def evaluate(
     )
     if assembly.evaluation_stream is None or not assembly.evaluators:
         raise SpecError("task does not define an evaluation data path and evaluators")
-    model, execution_model, device, checkpoint_path, _ = load_model_checkpoint(
+    model, execution_model, device, checkpoint_path, manifest = load_model_checkpoint(
         task=task,
         assembly=assembly,
         run=run,
@@ -58,17 +59,39 @@ def evaluate(
         batch_size=run.per_device_batch_size,
         execution_model=execution_model,
     )
+    evaluation_config = {
+        "schema_version": 1,
+        "checkpoint": {
+            "framework_version": manifest.framework_version,
+            "task_digest": manifest.task_digest,
+            "training_run_digest": manifest.run_digest,
+            "module_lock": dict(sorted(manifest.module_lock.items())),
+            "global_step": manifest.global_step,
+            "model_sha256": manifest.model_sha256,
+            "runtime_sha256": manifest.runtime_sha256,
+        },
+        "execution": {
+            "seed": run.seed,
+            "deterministic": run.deterministic,
+            "device": run.device,
+            "precision": run.precision,
+            "attention_kernel": run.attention_kernel,
+            "compile": canonical_value(run.compile),
+            "per_device_batch_size": run.per_device_batch_size,
+            "batches": batches,
+        },
+    }
+    evaluation_digest = identity_digest(evaluation_config)
     receipt = (
         run.checkpoint.directory.parent
         / "evaluations"
-        / f"{checkpoint_path.name}.json"
+        / manifest.model_sha256
+        / f"{evaluation_digest}.json"
     )
     payload = {
-        "schema_version": 1,
-        "checkpoint": str(checkpoint_path),
-        "task_digest": task.digest,
-        "run_digest": run.digest,
-        "batches": result.batches,
+        "schema_version": 2,
+        "evaluation_digest": evaluation_digest,
+        "configuration": evaluation_config,
         "samples": result.samples,
         "metrics": result.metrics,
     }
