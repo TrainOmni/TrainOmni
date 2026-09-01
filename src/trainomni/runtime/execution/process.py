@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -86,6 +86,7 @@ class ProcessContext:
             requested_device=requested_device,
             world_size=world_size,
         )
+        cls._bind_local_device(requested_device, local_rank=local_rank)
         owns_group = False
         store = None
         injected = []
@@ -158,6 +159,25 @@ class ProcessContext:
         )
 
     @staticmethod
+    def _bind_local_device(requested: str, *, local_rank: int) -> None:
+        device = torch.device(requested)
+        if device.type not in {"cuda", "npu"}:
+            return
+        if device.index is not None and device.index != local_rank:
+            raise SpecError(
+                f"requested device index {device.index} disagrees with LOCAL_RANK "
+                f"{local_rank}"
+            )
+        if device.type == "cuda":
+            torch.cuda.set_device(local_rank)
+            return
+        npu = getattr(torch, "npu", None)
+        setter = getattr(npu, "set_device", None)
+        if not callable(setter):
+            raise SpecError("NPU distributed execution requires torch_npu set_device")
+        setter(local_rank)
+
+    @staticmethod
     def _resolve_group_backend(
         configured: str, *, requested_device: str, world_size: int
     ) -> str:
@@ -203,7 +223,71 @@ class ProcessContext:
 
     def barrier(self) -> None:
         if self.distributed and self.world_size > 1:
-            torch.distributed.barrier()
+            device_ids = (
+                [self.local_rank]
+                if self.process_group_backend in {"nccl", "hccl"}
+                else None
+            )
+            torch.distributed.barrier(device_ids=device_ids)
+
+    def coordinate_primary(
+        self,
+        action: Callable[[], Any],
+        *,
+        owner: str,
+        error_type: type[Exception],
+    ) -> Any:
+        """Run rank-zero work and broadcast success/failure to every rank."""
+
+        result = None
+        failure = None
+        cause = None
+        if self.is_primary:
+            try:
+                result = action()
+            except Exception as exc:  # noqa: BLE001 - propagate rank-zero failures
+                cause = exc
+                failure = {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+        self.propagate_primary_failure(
+            cause if cause is not None else failure,
+            owner=owner,
+            error_type=error_type,
+        )
+        return result
+
+    def propagate_primary_failure(
+        self,
+        failure: Exception | dict[str, str] | None,
+        *,
+        owner: str,
+        error_type: type[Exception],
+    ) -> None:
+        """Complete a rank-zero operation without stranding peer ranks."""
+
+        cause = failure if isinstance(failure, Exception) else None
+        payload_value = (
+            {
+                "type": type(failure).__name__,
+                "message": str(failure),
+            }
+            if isinstance(failure, Exception)
+            else failure
+        )
+        if self.world_size > 1:
+            payload = [payload_value if self.is_primary else None]
+            torch.distributed.broadcast_object_list(payload, src=0)
+            payload_value = payload[0]
+        if payload_value is not None:
+            error = error_type(
+                f"{owner} failed on rank 0: "
+                f"{payload_value['type']}: {payload_value['message']}"
+            )
+            if cause is not None:
+                raise error from cause
+            raise error
 
     def reduce_float(self, value: float, *, reduction: str, device: torch.device) -> float:
         if self.world_size == 1:

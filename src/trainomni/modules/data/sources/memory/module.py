@@ -105,6 +105,7 @@ class MemorySource:
             _sample_from_mapping(sample, index) for index, sample in enumerate(config.samples)
         )
         self.repeat = config.repeat
+        self.is_finite = not config.repeat
         self.cursor = 0
 
     def next_sample(self) -> OmniSample:

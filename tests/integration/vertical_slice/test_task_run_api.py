@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -275,6 +276,110 @@ def create_run(
         encoding="utf-8",
     )
     return path
+
+
+def test_evaluate_and_export_do_not_construct_the_training_source(
+    tmp_path: Path,
+) -> None:
+    task_path = create_task(tmp_path / "task")
+    task_payload = json.loads(task_path.read_text(encoding="utf-8"))
+    samples = task_payload["data"]["source"]["config"]["samples"]
+    training_path = task_path.parent / "train.jsonl"
+    content = "".join(json.dumps(sample) + "\n" for sample in samples)
+    training_path.write_text(content, encoding="utf-8")
+    task_payload["data"]["source"] = {
+        "module": "data_source:trainomni/jsonl@1",
+        "config": {
+            "path": training_path.name,
+            "sha256": hashlib.sha256(training_path.read_bytes()).hexdigest(),
+            "repeat": True,
+        },
+    }
+    task_path.write_text(json.dumps(task_payload), encoding="utf-8")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    run_path = create_run(run_root)
+
+    trained = train(
+        task_path=task_path,
+        run_path=run_path,
+        allow_local_code=True,
+        stop_after_steps=2,
+    )
+    checkpoint = run_root / "outputs" / "checkpoints" / "step-00000002"
+    assert trained.final_step == 2
+    training_path.unlink()
+
+    evaluated = evaluate(
+        task_path=task_path,
+        run_path=run_path,
+        checkpoint=checkpoint,
+        batches=1,
+        allow_local_code=True,
+    )
+    exported = export_artifact(
+        task_path=task_path,
+        run_path=run_path,
+        checkpoint=checkpoint,
+        destination=tmp_path / "export-without-train-data",
+        allow_local_code=True,
+    )
+
+    assert evaluated.samples == 2
+    assert evaluated.metrics["eval_loss"] > 0
+    assert exported.artifact.kind == "safetensors"
+
+
+def test_full_resume_allows_checkpoint_directory_relocation_in_the_same_run_root(
+    tmp_path: Path,
+) -> None:
+    task_path = create_task(tmp_path / "task")
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    run_path = create_run(run_root)
+    run_payload = json.loads(run_path.read_text(encoding="utf-8"))
+    run_payload["checkpoint"]["directory"] = "outputs/checkpoints-a"
+    run_path.write_text(json.dumps(run_payload), encoding="utf-8")
+    first = train(
+        task_path=task_path,
+        run_path=run_path,
+        allow_local_code=True,
+        stop_after_steps=2,
+    )
+    assert first.final_step == 2
+
+    source_root = run_root / "outputs" / "checkpoints-a"
+    source = source_root / "step-00000002"
+    destination_root = run_root / "outputs" / "checkpoints-b"
+    shutil.copytree(source_root, destination_root)
+    destination = destination_root / source.name
+    run_payload["checkpoint"]["directory"] = "outputs/checkpoints-b"
+    run_path.write_text(json.dumps(run_payload), encoding="utf-8")
+
+    resumed = train(
+        task_path=task_path,
+        run_path=run_path,
+        allow_local_code=True,
+        resume_from=destination,
+    )
+
+    assert resumed.final_step == 4
+    semantic_receipt = json.loads(
+        (run_root / "outputs" / "resolved" / "run.resolved.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert semantic_receipt["checkpoint"]["directory"] == (
+        "<physical-checkpoint-output>"
+    )
+    location_receipt = json.loads(
+        (run_root / "outputs" / "checkpoints-b" / "run-location.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert Path(location_receipt["checkpoint_directory"]) == (
+        run_root / "outputs" / "checkpoints-b"
+    ).resolve()
 
 
 def test_separate_task_and_run_files_drive_the_same_runtime(tmp_path: Path) -> None:

@@ -31,6 +31,26 @@ def _write_exact(path: Path, payload: Any) -> None:
     os.replace(temporary, path)
 
 
+def _write_physical_location(path: Path, payload: Any) -> None:
+    """Atomically refresh non-semantic location metadata after relocation."""
+
+    content = json.dumps(
+        canonical_value(payload),
+        indent=2,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+    ) + "\n"
+    if path.exists() and not path.is_file():
+        raise CheckpointError(f"run location receipt is not a file: {path}")
+    if path.is_file() and path.read_text(encoding="utf-8") == content:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(content, encoding="utf-8")
+    os.replace(temporary, path)
+
+
 def materialize_run_identity(
     *,
     output_root: Path,
@@ -38,10 +58,12 @@ def materialize_run_identity(
     run: Any,
     module_lock: Mapping[str, str],
     parameter_selection: Any,
+    reproducible: bool = True,
+    provenance_issues: tuple[str, ...] = (),
 ) -> None:
     root = Path(output_root)
-    _write_exact(root / "resolved" / "task.resolved.json", task)
-    _write_exact(root / "resolved" / "run.resolved.json", run)
+    _write_exact(root / "resolved" / "task.resolved.json", task.semantic_identity)
+    _write_exact(root / "resolved" / "run.resolved.json", run.semantic_identity)
     _write_exact(root / "resolved" / "modules.lock.json", module_lock)
     _write_exact(
         root / "resolved" / "parameters.json",
@@ -69,5 +91,15 @@ def materialize_run_identity(
             "task_digest": task.digest,
             "run_digest": run.digest,
             "module_lock": dict(module_lock),
+            "reproducible": reproducible,
+            "provenance_issues": provenance_issues,
+        },
+    )
+    _write_physical_location(
+        run.checkpoint.directory / "run-location.json",
+        {
+            "schema_version": 1,
+            "run_digest": run.digest,
+            "checkpoint_directory": run.checkpoint.directory.resolve(),
         },
     )

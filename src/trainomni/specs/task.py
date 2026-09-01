@@ -10,7 +10,67 @@ from typing import Any
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleId, ModuleKind, ModuleRef
 
-from .digest import identity_digest
+from .digest import canonical_value, identity_digest
+
+_RELOCATABLE_COLUMNAR_MODULES = frozenset(
+    {
+        "data_source:trainomni/parquet@1",
+        "data_source:trainomni/arrow@1",
+    }
+)
+_RELOCATABLE_TRANSFORMERS_MODULES = frozenset(
+    {
+        "model:trainomni/monolithic_transformers@1",
+        "encoder:trainomni/transformers_vision@1",
+        "encoder:trainomni/transformers_video@1",
+        "language:trainomni/transformers_causal_lm@1",
+        "model_io:trainomni/transformers@1",
+    }
+)
+_PHYSICAL_COLUMNAR_PATHS = ("<physical-columnar-paths>",)
+_PHYSICAL_TRANSFORMERS_ASSET = "<physical-transformers-asset>"
+
+
+def _normalize_module_value(value: Mapping[str, Any], module_id: str) -> dict[str, Any]:
+    normalized = dict(value)
+    normalized["config"] = dict(value["config"])
+    if module_id in _RELOCATABLE_COLUMNAR_MODULES:
+        normalized["config"]["paths"] = list(_PHYSICAL_COLUMNAR_PATHS)
+    elif (
+        module_id in _RELOCATABLE_TRANSFORMERS_MODULES
+        and normalized["config"].get("asset_manifest_sha256") is not None
+    ):
+        for field in ("model_name_or_path", "processor_name_or_path"):
+            if field in normalized["config"]:
+                normalized["config"][field] = _PHYSICAL_TRANSFORMERS_ASSET
+    return normalized
+
+
+def semantic_module_identity(reference: ModuleRef) -> Mapping[str, Any]:
+    """Return a module identity with relocatable physical bindings normalized."""
+
+    value = canonical_value(reference)
+    return _normalize_module_value(value, str(reference.module_id))
+
+
+def _semantic_task_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        if set(value) == {"module_id", "config"}:
+            module = value["module_id"]
+            if isinstance(module, Mapping):
+                module_id = (
+                    f"{module.get('kind')}:{module.get('namespace')}/"
+                    f"{module.get('name')}@{module.get('version')}"
+                )
+                if module_id in (
+                    _RELOCATABLE_COLUMNAR_MODULES
+                    | _RELOCATABLE_TRANSFORMERS_MODULES
+                ):
+                    return _normalize_module_value(value, module_id)
+        return {key: _semantic_task_value(inner) for key, inner in value.items()}
+    if isinstance(value, list):
+        return [_semantic_task_value(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +129,7 @@ class DataPipelineSpec:
     supervision: ModuleRef
     packer: ModuleRef
     collator: ModuleRef
+    drop_last: bool = False
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> DataPipelineSpec:
@@ -81,6 +142,7 @@ class DataPipelineSpec:
             "supervision",
             "packer",
             "collator",
+            "drop_last",
         }
         unknown = sorted(set(value) - allowed)
         if unknown:
@@ -109,6 +171,9 @@ class DataPipelineSpec:
                 "data source names must be non-empty and cannot start with '__'"
             )
         raw_adapter = value.get("adapter")
+        drop_last = value.get("drop_last", False)
+        if not isinstance(drop_last, bool):
+            raise SpecError("data.drop_last must be a boolean")
         return cls(
             source=_ref(value.get("source"), field="data.source", kind=ModuleKind.DATA_SOURCE),
             adapter=(
@@ -135,6 +200,7 @@ class DataPipelineSpec:
             collator=_ref(
                 value.get("collator"), field="data.collator", kind=ModuleKind.COLLATOR
             ),
+            drop_last=drop_last,
         )
 
 
@@ -307,8 +373,12 @@ class TaskSpec:
         )
 
     @property
+    def semantic_identity(self) -> Mapping[str, Any]:
+        return _semantic_task_value(canonical_value(self))
+
+    @property
     def digest(self) -> str:
-        return identity_digest(self)
+        return identity_digest(self.semantic_identity)
 
     def module_refs(self) -> tuple[ModuleRef, ...]:
         references = [

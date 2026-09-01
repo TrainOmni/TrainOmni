@@ -20,6 +20,7 @@ from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 
+from .._ops.cache_identity import validate_cache_binding
 from .._ops.sequence_logp import causal_sequence_logp
 from ..protocol import ObjectiveRequirements
 from .config import DPOConfig
@@ -30,6 +31,21 @@ class DPOObjective:
         self.config = config
 
     def requirements(self) -> ObjectiveRequirements:
+        cache_identity_fields = set()
+        for field in (
+            self.config.chosen_reference_logps_field,
+            self.config.rejected_reference_logps_field,
+        ):
+            prefix = f"__cache_identity__{field}__"
+            cache_identity_fields.update(
+                {
+                    prefix + "input_ids_sha256",
+                    prefix + "supervised_positions_sha256",
+                    prefix + "target_token_ids_sha256",
+                    prefix + "producer_identity_sha256",
+                    prefix + "branch",
+                }
+            )
         return ObjectiveRequirements(
             outputs=OutputRequirements(logits=True),
             supervision_fields=frozenset(
@@ -40,6 +56,7 @@ class DPOObjective:
                     self.config.rejected_labels_field,
                     self.config.chosen_reference_logps_field,
                     self.config.rejected_reference_logps_field,
+                    *cache_identity_fields,
                 }
             ),
         )
@@ -64,6 +81,30 @@ class DPOObjective:
             labels_field=self.config.rejected_labels_field,
             reference_field=self.config.rejected_reference_logps_field,
             branch="rejected",
+        )
+        self._preflight_pair_alignment(
+            chosen_inputs=chosen_inputs,
+            rejected_inputs=rejected_inputs,
+            chosen_labels=self._tensor_field(batch, self.config.chosen_labels_field),
+            rejected_labels=self._tensor_field(batch, self.config.rejected_labels_field),
+        )
+        validate_cache_binding(
+            batch=batch,
+            cache_field=self.config.chosen_reference_logps_field,
+            inputs=chosen_inputs,
+            labels=self._tensor_field(batch, self.config.chosen_labels_field),
+            ignore_index=self.config.ignore_index,
+            branch_code=1,
+            producer_identity_sha256=self.config.reference_producer_identity_sha256,
+        )
+        validate_cache_binding(
+            batch=batch,
+            cache_field=self.config.rejected_reference_logps_field,
+            inputs=rejected_inputs,
+            labels=self._tensor_field(batch, self.config.rejected_labels_field),
+            ignore_index=self.config.ignore_index,
+            branch_code=2,
+            producer_identity_sha256=self.config.reference_producer_identity_sha256,
         )
         outputs = self.requirements().outputs
         return ForwardPlan(
@@ -209,6 +250,87 @@ class DPOObjective:
             raise ObjectiveError(
                 f"DPO {branch} reference log-probs do not align with labels"
             )
+
+    @staticmethod
+    def _equal_value(left, right) -> bool:
+        if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
+            return (
+                isinstance(left, torch.Tensor)
+                and isinstance(right, torch.Tensor)
+                and left.shape == right.shape
+                and left.dtype == right.dtype
+                and torch.equal(left, right)
+            )
+        if isinstance(left, Mapping) or isinstance(right, Mapping):
+            return (
+                isinstance(left, Mapping)
+                and isinstance(right, Mapping)
+                and set(left) == set(right)
+                and all(DPOObjective._equal_value(left[key], right[key]) for key in left)
+            )
+        if isinstance(left, (tuple, list)) or isinstance(right, (tuple, list)):
+            return (
+                isinstance(left, (tuple, list))
+                and isinstance(right, (tuple, list))
+                and len(left) == len(right)
+                and all(
+                    DPOObjective._equal_value(a, b)
+                    for a, b in zip(left, right, strict=True)
+                )
+            )
+        return left == right
+
+    def _prompt_rows(self, inputs, labels, *, branch: str):
+        input_ids = inputs["input_ids"]
+        attention = inputs.get("attention_mask")
+        if attention is not None and (
+            not isinstance(attention, torch.Tensor) or attention.shape != labels.shape
+        ):
+            raise ObjectiveError(f"DPO {branch} attention_mask must align with labels")
+        prompts = []
+        for index in range(labels.shape[0]):
+            valid = (
+                torch.ones_like(labels[index], dtype=torch.bool)
+                if attention is None
+                else attention[index].bool()
+            )
+            ids = input_ids[index][valid]
+            row_labels = labels[index][valid]
+            supervised = torch.nonzero(
+                row_labels.ne(self.config.ignore_index), as_tuple=False
+            ).flatten()
+            if supervised.numel() == 0:
+                raise ObjectiveError(f"DPO {branch} sample has no supervised response")
+            boundary = int(supervised[0].item())
+            if boundary <= 0 or bool(
+                row_labels[:boundary].ne(self.config.ignore_index).any().item()
+            ):
+                raise ObjectiveError(
+                    f"DPO {branch} labels do not define one masked common prompt prefix"
+                )
+            prompts.append(ids[:boundary].detach().cpu())
+        return tuple(prompts)
+
+    def _preflight_pair_alignment(
+        self, *, chosen_inputs, rejected_inputs, chosen_labels, rejected_labels
+    ) -> None:
+        if set(chosen_inputs) != set(rejected_inputs):
+            raise ObjectiveError("DPO chosen/rejected model-input keys differ")
+        chosen_prompts = self._prompt_rows(chosen_inputs, chosen_labels, branch="chosen")
+        rejected_prompts = self._prompt_rows(
+            rejected_inputs, rejected_labels, branch="rejected"
+        )
+        if len(chosen_prompts) != len(rejected_prompts) or any(
+            not torch.equal(chosen, rejected)
+            for chosen, rejected in zip(chosen_prompts, rejected_prompts, strict=True)
+        ):
+            raise ObjectiveError("DPO chosen/rejected common prompt tokens differ")
+        varying = set(self.config.branch_sequence_fields)
+        for field in sorted(set(chosen_inputs) - varying):
+            if not self._equal_value(chosen_inputs[field], rejected_inputs[field]):
+                raise ObjectiveError(
+                    f"DPO chosen/rejected common input {field!r} differs"
+                )
 
     def state_dict(self):
         return {}

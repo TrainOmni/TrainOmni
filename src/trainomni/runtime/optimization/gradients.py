@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from typing import Any
 
@@ -29,3 +30,13 @@ def clip_gradients(parameters: Iterable[Any], max_norm: float | None) -> float:
             gradient = _local_or_full(parameter.grad.detach())
             squared = squared + gradient.float().square().sum()
     return float(squared.sqrt().item())
+
+
+def scale_gradients(parameters: Iterable[Any], factor: float) -> None:
+    """Scale materialized gradients after distributed synchronization."""
+
+    if not math.isfinite(factor) or factor <= 0:
+        raise ValueError("gradient scale must be finite and positive")
+    for parameter in parameters:
+        if parameter.requires_grad and parameter.grad is not None:
+            parameter.grad.mul_(factor)

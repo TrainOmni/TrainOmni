@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from trainomni.assembly.task_builder import module_lock
 from trainomni.core.errors import SpecError
 from trainomni.specs.loading import load_run, load_task
 from trainomni.specs.run import RunSpec
@@ -81,6 +82,36 @@ def test_run_identity_excludes_only_physical_checkpoint_directory(
 
     moved["per_device_batch_size"] = 3
     assert RunSpec.from_mapping(first).digest != RunSpec.from_mapping(moved).digest
+
+
+def test_columnar_task_identity_excludes_physical_paths_but_keeps_manifest() -> None:
+    left = task_payload()
+    left["data"]["source"] = {
+        "module": "data_source:trainomni/parquet@1",
+        "config": {
+            "dataset_id": "snapshot",
+            "paths": ["D:/stage-a/train/*.parquet"],
+            "dataset_manifest_sha256": "a" * 64,
+        },
+    }
+    right = task_payload()
+    right["data"]["source"] = {
+        "module": "data_source:trainomni/parquet@1",
+        "config": {
+            "dataset_id": "snapshot",
+            "paths": ["/mnt/stage-b/train/*.parquet"],
+            "dataset_manifest_sha256": "a" * 64,
+        },
+    }
+    left_task = TaskSpec.from_mapping(left)
+    right_task = TaskSpec.from_mapping(right)
+    assert left_task.digest == right_task.digest
+    assert dict(module_lock(left_task)) == dict(module_lock(right_task))
+
+    right["data"]["source"]["config"]["dataset_manifest_sha256"] = "b" * 64
+    changed = TaskSpec.from_mapping(right)
+    assert changed.digest != left_task.digest
+    assert dict(module_lock(changed)) != dict(module_lock(left_task))
 
 
 def test_named_child_sources_are_canonical_and_part_of_task_identity() -> None:

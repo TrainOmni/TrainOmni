@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from trainomni.contracts.batch import OmniBatch
+from trainomni.modules.objectives._ops.cache_identity import digest_tensor, value_digest
 from trainomni.modules.objectives.dense_kd.config import DenseKDConfig
 from trainomni.modules.objectives.dense_kd.module import DenseKDObjective
 from trainomni.modules.objectives.dpo.config import DPOConfig
@@ -11,6 +12,24 @@ from trainomni.modules.objectives.dpo.module import DPOObjective
 from trainomni.modules.parameters.protocol import ParameterGroup, ParameterSelection
 from trainomni.runtime.loop.engine import TrainEngine
 from trainomni.specs.run import RunSpec
+
+PRODUCER = "e" * 64
+
+
+def binding(field, input_ids, labels, branch):
+    positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
+    prefix = f"__cache_identity__{field}__"
+    return {
+        prefix + "input_ids_sha256": digest_tensor(value_digest(input_ids[0])).unsqueeze(0),
+        prefix + "supervised_positions_sha256": digest_tensor(
+            value_digest(positions)
+        ).unsqueeze(0),
+        prefix + "target_token_ids_sha256": digest_tensor(
+            value_digest(labels[0].index_select(0, positions))
+        ).unsqueeze(0),
+        prefix + "producer_identity_sha256": digest_tensor(PRODUCER).unsqueeze(0),
+        prefix + "branch": torch.tensor([branch]),
+    }
 
 
 class TinyPolicy(nn.Module):
@@ -43,17 +62,23 @@ class RepeatingStream:
 
 def kd_batch() -> OmniBatch:
     input_ids = torch.tensor([[1, 2, 3, 4]])
+    labels = torch.tensor([[-100, 2, 3, 4]])
     return OmniBatch(
         sample_ids=("kd",),
         model_inputs={"input_ids": input_ids},
-        labels=torch.tensor([[-100, 2, 3, 4]]),
-        supervision={"teacher_logits": torch.randn(1, 3, 7, dtype=torch.bfloat16)},
+        labels=labels,
+        supervision={
+            "teacher_logits": torch.randn(1, 3, 7, dtype=torch.bfloat16),
+            **binding("teacher_logits", input_ids, labels, 0),
+        },
     )
 
 
 def dpo_batch() -> OmniBatch:
     chosen = torch.tensor([[1, 2, 3, 4]])
     rejected = torch.tensor([[1, 2, 4, 3]])
+    chosen_labels = torch.tensor([[-100, 2, 3, 4]])
+    rejected_labels = torch.tensor([[-100, 2, 4, 3]])
     return OmniBatch(
         sample_ids=("pair",),
         model_inputs={"input_ids": chosen},
@@ -61,10 +86,12 @@ def dpo_batch() -> OmniBatch:
         supervision={
             "chosen_inputs": {"input_ids": chosen},
             "rejected_inputs": {"input_ids": rejected},
-            "chosen_labels": torch.tensor([[-100, 2, 3, 4]]),
-            "rejected_labels": torch.tensor([[-100, 2, 4, 3]]),
+            "chosen_labels": chosen_labels,
+            "rejected_labels": rejected_labels,
             "chosen_reference_logps": torch.tensor([[-0.4, -0.3, -0.2]]),
             "rejected_reference_logps": torch.tensor([[-0.5, -0.6, -0.4]]),
+            **binding("chosen_reference_logps", chosen, chosen_labels, 1),
+            **binding("rejected_reference_logps", rejected, rejected_labels, 2),
         },
     )
 
@@ -108,8 +135,18 @@ def make_engine(root: Path, name: str, objective, batch: OmniBatch) -> TrainEngi
 
 def test_dense_kd_and_dpo_use_the_same_engine_checkpoint_contract(tmp_path: Path) -> None:
     cases = (
-        ("kd", DenseKDObjective(DenseKDConfig()), kd_batch()),
-        ("dpo", DPOObjective(DPOConfig()), dpo_batch()),
+        (
+            "kd",
+            DenseKDObjective(DenseKDConfig(producer_identity_sha256=PRODUCER)),
+            kd_batch(),
+        ),
+        (
+            "dpo",
+            DPOObjective(
+                DPOConfig(reference_producer_identity_sha256=PRODUCER)
+            ),
+            dpo_batch(),
+        ),
     )
     for name, objective, batch in cases:
         torch.manual_seed(3)
@@ -135,20 +172,29 @@ def test_dense_kd_and_dpo_use_the_same_engine_checkpoint_contract(tmp_path: Path
 def test_dpo_exact_resume_matches_uninterrupted(tmp_path: Path) -> None:
     torch.manual_seed(13)
     uninterrupted = make_engine(
-        tmp_path / "uninterrupted", "dpo", DPOObjective(DPOConfig()), dpo_batch()
+        tmp_path / "uninterrupted",
+        "dpo",
+        DPOObjective(DPOConfig(reference_producer_identity_sha256=PRODUCER)),
+        dpo_batch(),
     )
     uninterrupted.train()
 
     torch.manual_seed(13)
     first = make_engine(
-        tmp_path / "resumed", "dpo", DPOObjective(DPOConfig()), dpo_batch()
+        tmp_path / "resumed",
+        "dpo",
+        DPOObjective(DPOConfig(reference_producer_identity_sha256=PRODUCER)),
+        dpo_batch(),
     )
     first.train(stop_after_steps=1)
     checkpoint = tmp_path / "resumed" / "step-00000001"
 
     torch.manual_seed(999)
     resumed = make_engine(
-        tmp_path / "resumed", "dpo", DPOObjective(DPOConfig()), dpo_batch()
+        tmp_path / "resumed",
+        "dpo",
+        DPOObjective(DPOConfig(reference_producer_identity_sha256=PRODUCER)),
+        dpo_batch(),
     )
     resumed.resume(checkpoint)
     resumed.train()

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from trainomni.core.assets import validate_asset_fields
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ArrowSourceConfig:
@@ -10,6 +12,7 @@ class ArrowSourceConfig:
     columns: tuple[str, ...] = ()
     batch_rows: int = 256
     repeat: bool = True
+    dataset_manifest_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.dataset_id, str) or not self.dataset_id.strip():
@@ -24,6 +27,10 @@ class ArrowSourceConfig:
             raise ValueError("Arrow columns must be unique")
         if self.batch_rows <= 0:
             raise ValueError("Arrow batch_rows must be positive")
+        validate_asset_fields(
+            revision=None,
+            asset_manifest_sha256=self.dataset_manifest_sha256,
+        )
         object.__setattr__(self, "dataset_id", self.dataset_id.strip())
         object.__setattr__(self, "paths", tuple(self.paths))
         object.__setattr__(self, "columns", tuple(self.columns))

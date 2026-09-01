@@ -20,6 +20,7 @@ class AdaptedSource:
             raise SpecError("data adapter must implement adapt")
         self.source = source
         self.adapter = adapter
+        self.is_finite = getattr(source, "is_finite", None)
 
     def next_sample(self):
         return self.adapter.adapt(self.source.next_record())

@@ -11,6 +11,9 @@ class NoPacker:
     def add(self, sample):
         return (sample,)
 
+    def flush(self):
+        return ()
+
     def state_dict(self):
         return {}
 

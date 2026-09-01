@@ -50,9 +50,15 @@ class PrefixFusion(nn.Module):
         if modal_embeddings.shape[0] != text_embeddings.shape[0]:
             raise SpecError("modal and text batch sizes differ")
         embeddings = torch.cat((modal_embeddings, text_embeddings), dim=1)
-        if attention_mask is not None:
+        if attention_mask is not None or merged.mask is not None:
+            if attention_mask is None:
+                attention_mask = torch.ones(
+                    input_ids.shape,
+                    device=input_ids.device,
+                    dtype=torch.long,
+                )
             prefix_mask = (
-                merged.mask
+                merged.mask.to(device=attention_mask.device, dtype=attention_mask.dtype)
                 if merged.mask is not None
                 else torch.ones(
                     modal_embeddings.shape[:2],
@@ -61,6 +67,35 @@ class PrefixFusion(nn.Module):
                 )
             )
             attention_mask = torch.cat((prefix_mask, attention_mask), dim=1)
+        position_ids = kwargs.pop("position_ids", None)
+        unsupported_positions = sorted(
+            key
+            for key in kwargs
+            if key in {"cache_position", "rope_deltas"} or key.endswith("_positions")
+        )
+        if unsupported_positions:
+            raise SpecError(
+                "prefix fusion cannot generically rewrite position-dependent fields: "
+                + ", ".join(unsupported_positions)
+            )
+        if position_ids is not None:
+            if not isinstance(position_ids, torch.Tensor) or position_ids.shape != input_ids.shape:
+                raise SpecError("prefix fusion position_ids must align with input_ids")
+            position_dtype = position_ids.dtype
+            if attention_mask is None:
+                position_ids = torch.arange(
+                    embeddings.shape[1],
+                    device=position_ids.device,
+                    dtype=position_dtype,
+                ).unsqueeze(0).expand(input_ids.shape[0], -1)
+            else:
+                position_ids = attention_mask.to(dtype=torch.long).cumsum(dim=-1) - 1
+                position_ids.masked_fill_(attention_mask.eq(0), 0)
+                position_ids = position_ids.to(
+                    device=position_ids.device,
+                    dtype=position_dtype,
+                )
+            kwargs["position_ids"] = position_ids
         output = language.forward_embeddings(
             embeddings,
             attention_mask=attention_mask,

@@ -6,7 +6,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from trainomni.core.context import BuildContext
-from trainomni.core.errors import CheckpointError
+from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.core.module import ModuleKind
 from trainomni.core.resolver import ModuleResolver
 from trainomni.modules.data.adapters.binding import AdaptedSource
@@ -40,6 +40,7 @@ class DataPipelineStream:
         supervision,
         packer,
         collator,
+        drop_last: bool,
     ) -> None:
         self.source = source
         self.transforms = tuple(transforms)
@@ -47,7 +48,10 @@ class DataPipelineStream:
         self.supervision = supervision
         self.packer = packer
         self.collator = collator
+        self.drop_last = drop_last
         self._ready = []
+        self._exhausted = False
+        self._dropped_examples = 0
 
     def shard(
         self,
@@ -59,11 +63,16 @@ class DataPipelineStream:
     ) -> None:
         if world_size == 1 and num_workers == 1:
             return
+        if world_size > 1 and getattr(self.source, "is_finite", None) is not False:
+            raise SpecError(
+                "multi-rank training requires an explicitly repeating source; "
+                "finite or unknown exhaustion cannot guarantee equal optimizer steps"
+            )
         if isinstance(self.source, RankShardedSource):
             if (self.source.rank, self.source.world_size) != (rank, world_size):
                 raise CheckpointError("data stream was already sharded for another topology")
             return
-        if self._ready:
+        if self._ready or self._exhausted:
             raise CheckpointError("data stream must be sharded before reading samples")
         physical_shard = getattr(self.source, "shard", None)
         if callable(physical_shard):
@@ -87,8 +96,18 @@ class DataPipelineStream:
     def next_batch(self, batch_size: int):
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
-        while len(self._ready) < batch_size:
-            sample = self.source.next_sample()
+        while len(self._ready) < batch_size and not self._exhausted:
+            try:
+                sample = self.source.next_sample()
+            except StopIteration:
+                self._exhausted = True
+                flush = getattr(self.packer, "flush", None)
+                if not callable(flush):
+                    raise SpecError(
+                        "finite data requires a packer with an explicit flush() contract"
+                    ) from None
+                self._ready.extend(flush())
+                break
             for transform in self.transforms:
                 sample = transform.apply(sample)
             encoded = self.model_io.encode(sample)
@@ -96,6 +115,13 @@ class DataPipelineStream:
             ready = self.packer.add(supervised)
             if ready:
                 self._ready.extend(ready)
+        if len(self._ready) < batch_size:
+            if not self._ready:
+                raise StopIteration
+            if self.drop_last:
+                self._dropped_examples += len(self._ready)
+                self._ready.clear()
+                raise StopIteration
         examples = tuple(self._ready[:batch_size])
         del self._ready[:batch_size]
         return self.collator.collate(examples)
@@ -109,11 +135,16 @@ class DataPipelineStream:
             "supervision": _optional_state(self.supervision),
             "collator": _optional_state(self.collator),
             "ready": tuple(self._ready),
+            "exhausted": self._exhausted,
+            "dropped_examples": self._dropped_examples,
         }
 
     def metrics(self):
         hook = getattr(self.source, "metrics", None)
-        return {} if not callable(hook) else dict(hook())
+        values = {} if not callable(hook) else dict(hook())
+        values["data/pipeline/dropped_examples"] = self._dropped_examples
+        values["data/pipeline/exhausted"] = int(self._exhausted)
+        return values
 
     def load_state_dict(self, state):
         expected = {
@@ -124,6 +155,8 @@ class DataPipelineStream:
             "supervision",
             "collator",
             "ready",
+            "exhausted",
+            "dropped_examples",
         }
         if set(state) != expected:
             raise CheckpointError(
@@ -132,6 +165,10 @@ class DataPipelineStream:
         ready = state["ready"]
         if not isinstance(ready, (tuple, list)):
             raise CheckpointError("data pipeline ready buffer must be a sequence")
+        exhausted = state["exhausted"]
+        dropped_examples = int(state["dropped_examples"])
+        if not isinstance(exhausted, bool) or dropped_examples < 0:
+            raise CheckpointError("data pipeline finite-source state is invalid")
         transform_states = state["transforms"]
         if not isinstance(transform_states, (tuple, list)) or len(
             transform_states
@@ -151,6 +188,8 @@ class DataPipelineStream:
         )
         _restore_optional_state(self.collator, state["collator"], owner="collator")
         self._ready = list(ready)
+        self._exhausted = exhausted
+        self._dropped_examples = dropped_examples
 
 
 def build_data_stream(
@@ -193,4 +232,5 @@ def build_data_stream(
         supervision=supervision,
         packer=packer,
         collator=collator,
+        drop_last=spec.drop_last,
     )

@@ -18,6 +18,34 @@ from trainomni.core.errors import CheckpointError
 from .manifest import CheckpointManifest
 from .resume import capture_rng_state, restore_rng_state
 
+
+def _state_equal(left: Any, right: Any) -> bool:
+    if isinstance(left, torch.Tensor) or isinstance(right, torch.Tensor):
+        return (
+            isinstance(left, torch.Tensor)
+            and isinstance(right, torch.Tensor)
+            and left.shape == right.shape
+            and left.dtype == right.dtype
+            and torch.equal(left, right)
+        )
+    if isinstance(left, Mapping) or isinstance(right, Mapping):
+        return (
+            isinstance(left, Mapping)
+            and isinstance(right, Mapping)
+            and set(left) == set(right)
+            and all(_state_equal(left[key], right[key]) for key in left)
+        )
+    if isinstance(left, (tuple, list)) or isinstance(right, (tuple, list)):
+        return (
+            isinstance(left, (tuple, list))
+            and isinstance(right, (tuple, list))
+            and len(left) == len(right)
+            and all(
+                _state_equal(a, b) for a, b in zip(left, right, strict=True)
+            )
+        )
+    return left == right
+
 _MODEL_FILE = "model.safetensors"
 _OPTIMIZER_FILE = "optimizer.pt"
 _RUNTIME_FILE = "runtime.pt"
@@ -41,7 +69,7 @@ class CheckpointManager:
         run_digest: str,
         module_lock: Mapping[str, str],
         compatible_run_digests: tuple[str, ...] = (),
-        framework_version: str = "0.1.0",
+        framework_version: str = "0.1.1",
         process: Any | None = None,
         state_adapter: Any | None = None,
     ) -> None:
@@ -142,12 +170,25 @@ class CheckpointManager:
                 dst=0,
             )
         if not self._is_primary:
-            self._barrier()
+            self.process.propagate_primary_failure(
+                None,
+                owner="checkpoint save",
+                error_type=CheckpointError,
+            )
             return directory
-        self.root.mkdir(parents=True, exist_ok=True)
-        if directory.exists():
-            raise CheckpointError(f"refusing to overwrite checkpoint: {directory}")
-        staging.mkdir(exist_ok=False)
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            if directory.exists():
+                raise CheckpointError(f"refusing to overwrite checkpoint: {directory}")
+            staging.mkdir(exist_ok=False)
+        except Exception as exc:
+            if self.process is not None:
+                self.process.propagate_primary_failure(
+                    exc,
+                    owner="checkpoint save",
+                    error_type=CheckpointError,
+                )
+            raise
         try:
             try:
                 from safetensors.torch import save_file, save_model
@@ -219,10 +260,21 @@ class CheckpointManager:
             )
             os.replace(temporary_manifest, staging / _MANIFEST_FILE)
             os.replace(staging, directory)
-        except Exception:
+        except Exception as exc:
             shutil.rmtree(staging, ignore_errors=True)
+            if self.process is not None:
+                self.process.propagate_primary_failure(
+                    exc,
+                    owner="checkpoint save",
+                    error_type=CheckpointError,
+                )
             raise
-        self._barrier()
+        if self.process is not None:
+            self.process.propagate_primary_failure(
+                None,
+                owner="checkpoint save",
+                error_type=CheckpointError,
+            )
         return directory
 
     def _read_manifest(
@@ -335,14 +387,31 @@ class CheckpointManager:
             if "rank_states" in runtime:
                 rank_states = runtime["rank_states"]
                 if (
-                    int(runtime.get("distributed_world_size", -1)) != self._world_size
-                    or not isinstance(rank_states, (tuple, list))
-                    or len(rank_states) != self._world_size
+                    not isinstance(rank_states, (tuple, list))
+                    or int(runtime.get("distributed_world_size", -1)) <= 1
+                    or len(rank_states)
+                    != int(runtime.get("distributed_world_size", -1))
                 ):
                     raise CheckpointError(
                         "distributed checkpoint rank states are incompatible"
                     )
-                runtime_state = rank_states[self._rank]
+                if any(
+                    not isinstance(state, Mapping) or "objective" not in state
+                    for state in rank_states
+                ):
+                    raise CheckpointError(
+                        "distributed checkpoint objective state is missing"
+                    )
+                objective_state = rank_states[0]["objective"]
+                if any(
+                    not _state_equal(objective_state, state["objective"])
+                    for state in rank_states[1:]
+                ):
+                    raise CheckpointError(
+                        "distributed objective state is rank-dependent and cannot be "
+                        "restored portably"
+                    )
+                runtime_state = rank_states[0]
             else:
                 runtime_state = runtime
             if not isinstance(runtime_state, Mapping) or "objective" not in runtime_state:

@@ -124,6 +124,7 @@ class JsonlSource:
         self.path = path
         self.file_sha256 = actual_digest
         self.repeat = config.repeat
+        self.is_finite = not config.repeat
         self.offset = 0
         self.line_number = 0
         self.epoch = 0

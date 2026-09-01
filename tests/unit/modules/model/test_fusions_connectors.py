@@ -27,12 +27,13 @@ class Language(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(7, 4)
         self.head = nn.Linear(4, 7)
+        self.received = None
 
     def embed(self, input_ids):
         return self.embedding(input_ids)
 
     def forward_embeddings(self, embeddings, **kwargs):
-        del kwargs
+        self.received = {"embeddings": embeddings, **kwargs}
         return SimpleNamespace(logits=self.head(embeddings))
 
 
@@ -61,8 +62,47 @@ def test_prefix_fusion_returns_text_aligned_logits() -> None:
         input_ids=input_ids,
         modal_features=ModalFeatures(torch.randn(1, 2, 4)),
         attention_mask=torch.ones_like(input_ids),
+        position_ids=torch.arange(3).unsqueeze(0),
     )
     assert result.logits.shape == (1, 3, 7)
+    assert language.received["position_ids"].tolist() == [[0, 1, 2, 3, 4]]
+    assert language.received["position_ids"].dtype == torch.int64
+    assert language.received["attention_mask"].shape == (1, 5)
+    for field in ("cache_position", "rope_deltas"):
+        with pytest.raises(SpecError, match="cannot generically rewrite"):
+            PrefixFusion(PrefixFusionConfig())(
+                language=language,
+                input_ids=input_ids,
+                modal_features=ModalFeatures(torch.randn(1, 2, 4)),
+                attention_mask=torch.ones_like(input_ids),
+                **{field: torch.arange(3)},
+            )
+
+
+def test_prefix_fusion_rebases_positions_over_only_valid_modal_tokens() -> None:
+    language = Language()
+    input_ids = torch.tensor([[1, 2, 0]])
+    PrefixFusion(PrefixFusionConfig())(
+        language=language,
+        input_ids=input_ids,
+        modal_features=ModalFeatures(
+            torch.randn(1, 2, 4),
+            mask=torch.tensor([[True, False]]),
+        ),
+        attention_mask=torch.tensor([[1, 1, 0]]),
+        position_ids=torch.tensor([[0, 1, 0]], dtype=torch.int32),
+    )
+    assert language.received["attention_mask"].tolist() == [[1, 0, 1, 1, 0]]
+    assert language.received["position_ids"].tolist() == [[0, 0, 1, 2, 0]]
+    assert language.received["position_ids"].dtype == torch.int32
+
+    with pytest.raises(SpecError, match="must align"):
+        PrefixFusion(PrefixFusionConfig())(
+            language=language,
+            input_ids=input_ids,
+            modal_features=ModalFeatures(torch.randn(1, 2, 4)),
+            position_ids=torch.arange(4).unsqueeze(0),
+        )
 
 
 def test_token_replacement_validates_positions() -> None:
@@ -83,6 +123,33 @@ def test_token_replacement_validates_positions() -> None:
             input_ids=input_ids,
             modal_features=modal,
             modal_positions=torch.tensor([[1, 1]]),
+        )
+
+
+def test_token_replacement_supports_unequal_modal_counts_with_masked_padding() -> None:
+    language = Language()
+    fusion = TokenReplaceFusion(TokenReplaceConfig())
+    input_ids = torch.tensor([[1, 2, 3], [3, 2, 1]])
+    modal = torch.randn(2, 2, 4)
+    mask = torch.tensor([[True, False], [True, True]])
+    result = fusion(
+        language=language,
+        input_ids=input_ids,
+        modal_features=ModalFeatures(modal, mask=mask),
+        modal_positions=torch.tensor([[1, -1], [0, 2]]),
+    )
+    assert result.logits.shape == (2, 3, 7)
+    expected = language.embed(input_ids).detach()
+    received = language.received["embeddings"].detach()
+    torch.testing.assert_close(received[0, 0], expected[0, 0])
+    torch.testing.assert_close(received[0, 2], expected[0, 2])
+    torch.testing.assert_close(received[0, 1], modal[0, 0])
+    with pytest.raises(SpecError, match="padded modal slots"):
+        fusion(
+            language=language,
+            input_ids=input_ids,
+            modal_features=ModalFeatures(modal, mask=mask),
+            modal_positions=torch.tensor([[1, 0], [0, 2]]),
         )
 
 

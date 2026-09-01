@@ -609,19 +609,22 @@ class RunSpec:
         )
 
     @property
-    def digest(self) -> str:
+    def semantic_identity(self) -> RunSpec:
         # The checkpoint directory is a physical output location, not execution
         # semantics.  Keeping it out of the run identity makes an otherwise
         # identical run movable without weakening any of the resume checks for
         # optimizer, scheduler, precision, topology, or batching configuration.
-        identity_projection = replace(
+        return replace(
             self,
             checkpoint=replace(
                 self.checkpoint,
                 directory=Path("<physical-checkpoint-output>"),
             ),
         )
-        return identity_digest(identity_projection)
+
+    @property
+    def digest(self) -> str:
+        return identity_digest(self.semantic_identity)
 
     @property
     def legacy_path_bound_digest(self) -> str:

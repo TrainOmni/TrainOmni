@@ -28,6 +28,7 @@ data:
       columns: [messages, images, videos, audios, id]
       batch_rows: 256
       repeat: true
+      dataset_manifest_sha256: <64-lowercase-hex>
   adapter:
     module: data_adapter:trainomni/msswift@1
     config:
@@ -79,17 +80,27 @@ If physical fragments are fewer than ranks, construction fails and asks the
 producer to write more row groups or Arrow shards. TrainOmni does not fall back
 to having every rank read the same stream and discard samples.
 
-The source cursor records dataset identity, topology, assigned fragments, epoch,
-fragment position, row position, and emitted count. Exact restore rejects file
-metadata, physical layout, assignment, or topology changes.
+The source cursor records the semantic dataset snapshot, topology, assigned
+fragments, epoch, fragment position, row position, and emitted count. Exact
+restore rejects a changed manifest, logical layout, assignment, or topology.
+Physical file roots, modification times and sizes are not semantic identity, so
+the same snapshot can be staged under a different node-local directory and resume
+without weakening the snapshot gate.
 
-This is a cursor-compatibility identity, not content-integrity provenance. The
-current Parquet/Arrow identity uses configured paths plus lightweight file and
-fragment metadata (including size, modification time, schema and physical
-layout); it does not hash complete files or row contents. A same-size byte change
-with a restored timestamp may therefore be invisible, while moving identical
-bytes to another path changes identity. Producers must own immutable object
-versions or external digests when content integrity is required.
+`dataset_manifest_sha256` is the content-provenance boundary. The producer owns a
+small immutable manifest that lists object versions or shard hashes; TrainOmni
+stores its digest in TaskSpec, module lock and source cursor. The readers inspect
+row counts/schema/fragment layout but do not repeatedly hash all Parquet/Arrow
+payload bytes. Missing manifest identity is explicitly non-reproducible and can
+only be used by a checkpoint-disabled diagnostic run. Supplying a stale or false
+producer manifest is outside the reader's trust boundary.
+
+For `repeat: false`, a single-process stream flushes the packer at EOF and either
+returns the final partial batch (`drop_last: false`, the default) or records and
+drops it (`drop_last: true`). Multi-rank training rejects finite or unknown-length
+sources before reading because unequal rank exhaustion would otherwise deadlock or
+silently change the effective batch. Use an explicitly repeating source until an
+equal-step finite sampler is selected.
 
 Current scope is local files. S3/object-store transport, node-local cache,
 prefetch, and construction of PyTorch worker processes remain separate

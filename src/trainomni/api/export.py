@@ -37,6 +37,7 @@ def export_artifact(
     task, assembly = assemble(
         task_path=task_path,
         allow_local_code=allow_local_code,
+        operation="export",
     )
     if not assembly.exporters:
         raise SpecError("task defines no exporters")
@@ -85,7 +86,7 @@ def export_artifact(
         model=model,
         destination=target,
         identity=identity,
-        processor=getattr(assembly.stream.model_io, "processor", None),
+        processor=assembly.processor,
     )
     return ExportResult(
         exporter=exporter_id,

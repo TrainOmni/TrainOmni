@@ -7,6 +7,8 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+import torch
+
 from trainomni.contracts.sample import OmniSample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
@@ -42,7 +44,7 @@ class TensorCacheTransform:
             raise SpecError(f"cannot read tensor-cache index: {exc}") from exc
         if not isinstance(raw, Mapping) or set(raw) != {"schema_version", "samples"}:
             raise SpecError("tensor-cache index root is invalid")
-        if raw["schema_version"] != 1 or not isinstance(raw["samples"], Mapping):
+        if raw["schema_version"] != 2 or not isinstance(raw["samples"], Mapping):
             raise SpecError("unsupported tensor-cache index schema")
         self.entries = {
             str(sample_id): self._validate_entry(str(sample_id), entry)
@@ -55,11 +57,13 @@ class TensorCacheTransform:
             "file",
             "sha256",
             "tensors",
+            "bindings",
         }:
             raise SpecError(f"tensor-cache entry {sample_id!r} is invalid")
         filename = entry["file"]
         digest = entry["sha256"]
         tensors = entry["tensors"]
+        bindings = entry["bindings"]
         if not isinstance(filename, str) or not filename:
             raise SpecError(f"tensor-cache entry {sample_id!r} has invalid file")
         relative = Path(filename)
@@ -88,7 +92,40 @@ class TensorCacheTransform:
             )
         ):
             raise SpecError(f"tensor-cache entry {sample_id!r} has invalid tensors")
-        return path, digest, dict(tensors)
+        if not isinstance(bindings, Mapping) or set(bindings) != set(tensors):
+            raise SpecError(
+                f"tensor-cache entry {sample_id!r} bindings must match tensor outputs"
+            )
+        normalized_bindings = {}
+        required = {
+            "input_ids_sha256",
+            "supervised_positions_sha256",
+            "target_token_ids_sha256",
+            "producer_identity_sha256",
+            "branch",
+        }
+        for output, binding in bindings.items():
+            if not isinstance(binding, Mapping) or set(binding) != required:
+                raise SpecError(
+                    f"tensor-cache binding {sample_id!r}/{output!r} is invalid"
+                )
+            for field in required - {"branch"}:
+                value = binding[field]
+                if (
+                    not isinstance(value, str)
+                    or len(value) != 64
+                    or any(character not in "0123456789abcdef" for character in value)
+                ):
+                    raise SpecError(
+                        f"tensor-cache binding {sample_id!r}/{output!r} has invalid {field}"
+                    )
+            branch = binding["branch"]
+            if branch not in {"teacher", "chosen", "rejected"}:
+                raise SpecError(
+                    f"tensor-cache binding {sample_id!r}/{output!r} has invalid branch"
+                )
+            normalized_bindings[str(output)] = dict(binding)
+        return path, digest, dict(tensors), normalized_bindings
 
     def _load(self, path: Path, digest: str):
         key = (path, digest)
@@ -110,7 +147,7 @@ class TensorCacheTransform:
                 f"sample metadata already contains {self.config.metadata_key!r}"
             )
         try:
-            path, digest, names = self.entries[sample.sample_id]
+            path, digest, names, bindings = self.entries[sample.sample_id]
         except KeyError as exc:
             raise SpecError(
                 f"tensor-cache index has no sample {sample.sample_id!r}"
@@ -123,9 +160,25 @@ class TensorCacheTransform:
                 + ", ".join(missing)
             )
         metadata = dict(sample.metadata)
-        metadata[self.config.metadata_key] = {
+        cached = {
             output: source[tensor_name] for output, tensor_name in names.items()
         }
+        branch_codes = {"teacher": 0, "chosen": 1, "rejected": 2}
+        for output, binding in bindings.items():
+            prefix = f"__cache_identity__{output}__"
+            for field in (
+                "input_ids_sha256",
+                "supervised_positions_sha256",
+                "target_token_ids_sha256",
+                "producer_identity_sha256",
+            ):
+                cached[prefix + field] = torch.tensor(
+                    list(bytes.fromhex(binding[field])), dtype=torch.uint8
+                )
+            cached[prefix + "branch"] = torch.tensor(
+                branch_codes[binding["branch"]], dtype=torch.int64
+            )
+        metadata[self.config.metadata_key] = cached
         return OmniSample(
             sample.sample_id,
             sample.content,

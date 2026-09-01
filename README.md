@@ -15,6 +15,8 @@ The replacement implementation currently has an executable first vertical slice:
 - native PyArrow Parquet row-group and Arrow IPC readers with pre-I/O DP-rank
   and worker partitioning, plus a separate ms-swift-compatible multimodal row
   adapter;
+- producer-manifest identities for relocatable Parquet/Arrow snapshots and local
+  Transformers assets, or immutable remote commit revisions;
 - composite encoder/connector/fusion/language model assembly;
 - ordered multi-branch image/video routing through `ModalFeatureSet`, with
   optional branches and an additive path for a later audio encoder;
@@ -24,6 +26,7 @@ The replacement implementation currently has an executable first vertical slice:
 - full/component/freeze and native Linear-LoRA parameter policies
   (`train_bias=false`; trained bias fails closed);
 - AdamW, scheduler, accumulation, clipping, FP32/BF16/FP16 precision contracts;
+- effective-batch loss normalization over unequal microbatch/rank denominators;
 - component-scoped activation checkpointing;
 - optional `torch.compile` forward execution without compiled checkpoint keys;
 - direct PyTorch single/DDP/FSDP2 execution selected by RunSpec, with rank-safe
@@ -31,8 +34,12 @@ The replacement implementation currently has an executable first vertical slice:
 - optional Linux DeepSpeed ZeRO adapter with explicit fail-closed checkpoint and
   platform boundaries;
 - atomic split model/optimizer/scheduler/objective/data/RNG checkpoints;
+- coordinated primary-rank filesystem failures and portable model-only objective
+  restore when distributed objective state is rank-invariant;
 - explicit checkpoint-disabled diagnostic runs that retain identities/metrics;
 - structured run identity, metrics and exact fresh-process resume;
+- explicit finite-source packer flush and partial/drop-last behavior, with
+  multi-rank uneven exhaustion rejected before reading;
 - held-out evaluation with config-addressed receipts, generic/Transformers/LoRA
   export and strict artifact reload.
 
@@ -63,6 +70,8 @@ Important documents:
   docs/architecture/distributed-execution.md
 - seven-route medium-data loss and update evidence:
   docs/verification/real-vlm-medium-data-20260822.md
+- corrected provenance/loss/data/distributed/cache closure:
+  docs/verification/core-correctness-20260901.md
 - one task / one run / one command: docs/usage/quickstart.md
 
 Basic command boundary:

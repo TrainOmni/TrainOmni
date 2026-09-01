@@ -85,6 +85,7 @@ def _factory(config: ParquetSourceConfig, context):
         iter_fragment=iter_fragment,
         repeat=config.repeat,
         format_name="parquet",
+        dataset_manifest_sha256=config.dataset_manifest_sha256,
     )
 
 

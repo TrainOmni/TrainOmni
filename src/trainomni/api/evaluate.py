@@ -39,6 +39,7 @@ def evaluate(
     task, assembly = assemble(
         task_path=task_path,
         allow_local_code=allow_local_code,
+        operation="evaluate",
     )
     if assembly.evaluation_stream is None or not assembly.evaluators:
         raise SpecError("task does not define an evaluation data path and evaluators")

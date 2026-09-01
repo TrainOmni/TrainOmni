@@ -1,13 +1,35 @@
 import pytest
 import torch
+from torch import nn
 from torch.nn import functional
 
 from trainomni.contracts.batch import OmniBatch
 from trainomni.contracts.forward import ForwardResult
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
+from trainomni.modules.objectives._ops.cache_identity import digest_tensor, value_digest
 from trainomni.modules.objectives.dense_kd.config import DenseKDConfig
 from trainomni.modules.objectives.dense_kd.module import DenseKDObjective
+from trainomni.runtime.device.context import DeviceContext
+from trainomni.runtime.loop.step import execute_forward_plan
+
+PRODUCER = "a" * 64
+
+
+def cache_identity(input_ids, labels):
+    positions = torch.nonzero(labels[0].ne(-100), as_tuple=False).flatten()
+    prefix = "__cache_identity__teacher_logits__"
+    return {
+        prefix + "input_ids_sha256": digest_tensor(value_digest(input_ids[0])).unsqueeze(0),
+        prefix + "supervised_positions_sha256": digest_tensor(
+            value_digest(positions)
+        ).unsqueeze(0),
+        prefix + "target_token_ids_sha256": digest_tensor(
+            value_digest(labels[0].index_select(0, positions))
+        ).unsqueeze(0),
+        prefix + "producer_identity_sha256": digest_tensor(PRODUCER).unsqueeze(0),
+        prefix + "branch": torch.tensor([0]),
+    }
 
 
 def test_dense_kd_matches_fp32_oracle_and_preserves_student_gradient() -> None:
@@ -27,14 +49,22 @@ def test_dense_kd_matches_fp32_oracle_and_preserves_student_gradient() -> None:
         dtype=torch.bfloat16,
     )
     labels = torch.tensor([[-100, 1, -100, 2]])
+    input_ids = torch.tensor([[0, 1, 2, 0]])
     batch = OmniBatch(
         sample_ids=("kd",),
-        model_inputs={"input_ids": torch.tensor([[0, 1, 2, 0]])},
+        model_inputs={"input_ids": input_ids},
         labels=labels,
-        supervision={"teacher_logits": teacher},
+        supervision={"teacher_logits": teacher, **cache_identity(input_ids, labels)},
     )
-    config = DenseKDConfig(ce_weight=0.5, kd_weight=0.5, temperature=2.0)
-    bundle = DenseKDObjective(config).compute(
+    config = DenseKDConfig(
+        producer_identity_sha256=PRODUCER,
+        ce_weight=0.5,
+        kd_weight=0.5,
+        temperature=2.0,
+    )
+    objective = DenseKDObjective(config)
+    objective.plan(batch, ObjectiveContext(global_step=0, micro_step=0))
+    bundle = objective.compute(
         batch,
         {"policy": ForwardResult("policy", {"logits": student})},
         ObjectiveContext(global_step=0, micro_step=0),
@@ -75,8 +105,96 @@ def test_dense_kd_alignment_mismatch_fails_closed() -> None:
         supervision={"teacher_logits": torch.zeros(1, 2, 3)},
     )
     with torch.no_grad(), pytest.raises(ObjectiveError, match="align"):
-        DenseKDObjective(DenseKDConfig()).compute(
+        DenseKDObjective(DenseKDConfig(producer_identity_sha256=PRODUCER)).compute(
             batch,
             {"policy": ForwardResult("policy", {"logits": student})},
             ObjectiveContext(global_step=0, micro_step=0),
         )
+
+
+def test_dense_kd_wrong_self_consistent_cache_identity_fails_before_forward() -> None:
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, input_ids):
+            self.calls += 1
+            return {"logits": torch.zeros(*input_ids.shape, 3)}
+
+    input_ids = torch.tensor([[0, 1, 2, 0]])
+    labels = torch.tensor([[-100, 1, -100, 2]])
+    supervision = {
+        "teacher_logits": torch.zeros(1, 3, 3),
+        **cache_identity(input_ids, labels),
+    }
+    field = "__cache_identity__teacher_logits__target_token_ids_sha256"
+    supervision[field] = supervision[field].clone()
+    supervision[field][0, 0] ^= 1
+    batch = OmniBatch(
+        sample_ids=("wrong-cache",),
+        model_inputs={"input_ids": input_ids},
+        labels=labels,
+        supervision=supervision,
+    )
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="target.*identity mismatch"):
+        execute_forward_plan(
+            model=policy,
+            objective=DenseKDObjective(
+                DenseKDConfig(producer_identity_sha256=PRODUCER)
+            ),
+            batch=batch,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0
+
+
+@pytest.mark.parametrize("corruption", ["input_ids", "positions", "producer", "branch"])
+def test_dense_kd_all_cache_bindings_fail_before_forward(corruption: str) -> None:
+    class Policy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def forward(self, input_ids):
+            self.calls += 1
+            return {"logits": torch.zeros(*input_ids.shape, 3)}
+
+    input_ids = torch.tensor([[0, 1, 2, 0]])
+    labels = torch.tensor([[-100, 1, -100, 2]])
+    supervision = {
+        "teacher_logits": torch.zeros(1, 3, 3),
+        **cache_identity(input_ids, labels),
+    }
+    if corruption == "input_ids":
+        input_ids = input_ids.clone()
+        input_ids[0, 0] = 2
+    elif corruption == "positions":
+        field = "__cache_identity__teacher_logits__supervised_positions_sha256"
+        supervision[field] = supervision[field].clone()
+        supervision[field][0, 0] ^= 1
+    elif corruption == "producer":
+        field = "__cache_identity__teacher_logits__producer_identity_sha256"
+        supervision[field] = digest_tensor("c" * 64).unsqueeze(0)
+    else:
+        supervision["__cache_identity__teacher_logits__branch"] = torch.tensor([1])
+    batch = OmniBatch(
+        sample_ids=("wrong-cache",),
+        model_inputs={"input_ids": input_ids},
+        labels=labels,
+        supervision=supervision,
+    )
+    policy = Policy()
+    with pytest.raises(ObjectiveError, match="identity mismatch"):
+        execute_forward_plan(
+            model=policy,
+            objective=DenseKDObjective(
+                DenseKDConfig(producer_identity_sha256=PRODUCER)
+            ),
+            batch=batch,
+            context=ObjectiveContext(0, 0),
+            device=DeviceContext("cpu", "fp32"),
+        )
+    assert policy.calls == 0

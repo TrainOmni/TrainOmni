@@ -24,6 +24,7 @@ data:
     module: model_io:trainomni/transformers@1
     config:
       processor_name_or_path: D:/Models/my-vlm
+      asset_manifest_sha256: <64-lowercase-hex>
       local_files_only: true
       conversation_mode: required
       require_assistant_mask: true
@@ -38,6 +39,7 @@ model:
     module: model:trainomni/monolithic_transformers@1
     config:
       model_name_or_path: D:/Models/my-vlm
+      asset_manifest_sha256: <64-lowercase-hex>
       local_files_only: true
   components: {}
 objective:
@@ -60,6 +62,7 @@ evaluation:
       module: model_io:trainomni/transformers@1
       config:
         processor_name_or_path: D:/Models/my-vlm
+        asset_manifest_sha256: <64-lowercase-hex>
         local_files_only: true
         conversation_mode: required
     supervision: {module: supervision:trainomni/causal_lm@1}
@@ -147,8 +150,17 @@ fields remain exact-resume inputs. Model-only evaluate/export validates checkpoi
 task/module/framework and file integrity, but may use a different execution
 device, precision, batch size and output directory:
 
-Pre-fix v1 checkpoints can still resume at their original configured output path.
-Movable full-state resume applies to checkpoints written with the corrected digest.
+The asset-manifest digest is a producer-owned small manifest identity that binds
+the local Transformers payload without re-hashing multi-gigabyte weights at every
+launch. A remote model may instead use an immutable 40--64 character lowercase
+commit `revision`. An unpinned Transformers or Parquet/Arrow asset is explicitly
+non-reproducible: it may run only with `checkpoint.enabled=false` and cannot claim
+exact resume.
+
+Pre-fix checkpoints use the old Framework version/provenance and are deliberately
+rejected by the corrected exact-resume path. Checkpoint relocation applies to
+checkpoints written by the corrected implementation; changing any semantic run,
+task, module, asset or dataset identity still fails.
 
 ```text
 trainomni train --task task.yaml --run run.yaml --resume outputs/checkpoints/step-00000100

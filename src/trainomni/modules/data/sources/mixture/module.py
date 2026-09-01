@@ -28,6 +28,12 @@ class MixtureSource:
                     raise SpecError(f"mixture child {name!r} has no callable {hook}")
         self.config = config
         self.sources = dict(sorted(sources.items()))
+        finite_states = tuple(getattr(source, "is_finite", None) for source in sources.values())
+        self.is_finite = (
+            all(state is True for state in finite_states)
+            if all(state is not None for state in finite_states)
+            else None
+        )
         self.active_sources = tuple(self.sources)
         self.cursor = 0
         self.counts = {name: 0 for name in self.sources}

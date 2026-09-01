@@ -33,6 +33,22 @@ compute owns alignment, masking, FP32 numerical operations, reduction,
 normalization and named metrics. It returns a scalar LossBundle.total; the runtime
 alone owns backward, accumulation, clipping and optimizer stepping.
 
+Every `LossTerm` must expose its unnormalized `numerator` and its semantic
+`denominator`. All named terms in one bundle must use the same denominator and
+`LossBundle.total` must equal the weighted sum of term values. During gradient
+accumulation the engine backpropagates local numerators, sums denominators across
+all microbatches and data-parallel ranks, then applies exactly one global
+normalization before clipping and stepping. This makes token-, sample- and
+pair-mean objectives correct when local sequence lengths differ. A custom
+objective must not hide a second batch-size normalization inside its numerator.
+
+Offline caches are not trusted merely because their shard SHA-256 matches. The
+builtin KD/DPO objectives require per-sample bindings for expanded `input_ids`,
+true supervised positions, target token IDs, branch identity and one producer
+identity digest. That producer digest must itself bind the producing model,
+processor and tokenizer snapshots. Cache binding failures occur before policy
+forward.
+
 Supervision modules create labels, target positions, masks or preference branches.
 Objectives must still validate them before calculating loss. Loss weights and
 normalization are task semantics and therefore belong in objective config inside

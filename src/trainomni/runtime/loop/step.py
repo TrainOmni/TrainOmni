@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any
 
@@ -70,4 +71,26 @@ def execute_forward_plan(
             )
         if float(term.denominator.detach().float().item()) <= 0:
             raise ObjectiveError(f"loss term {name!r} denominator must be positive")
+        if not math.isfinite(float(term.weight)):
+            raise ObjectiveError(f"loss term {name!r} weight must be finite")
+    denominators = tuple(term.denominator for term in loss.terms.values())
+    reference_denominator = denominators[0]
+    if any(
+        float(value.detach().float().item())
+        != float(reference_denominator.detach().float().item())
+        for value in denominators[1:]
+    ):
+        raise ObjectiveError(
+            "all loss terms must share one effective-batch denominator"
+        )
+    reconstructed = sum(term.value * term.weight for term in loss.terms.values())
+    if not torch.allclose(
+        loss.total.detach().float(),
+        reconstructed.detach().float(),
+        rtol=1e-5,
+        atol=1e-7,
+    ):
+        raise ObjectiveError(
+            "objective total must equal the weighted sum of named loss terms"
+        )
     return loss

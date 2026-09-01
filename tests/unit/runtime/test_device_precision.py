@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import torch
 from torch import nn
@@ -5,6 +7,8 @@ from torch import nn
 from trainomni.contracts.batch import OmniBatch
 from trainomni.core.errors import SpecError
 from trainomni.runtime.device.context import DeviceContext
+from trainomni.runtime.execution.process import ProcessContext
+from trainomni.specs.run import ExecutionSpec
 
 
 def test_true_bf16_casts_model_and_floating_inputs_but_not_token_ids() -> None:
@@ -50,3 +54,73 @@ def test_cpu_bf16_mixed_autocast_keeps_parameters_fp32() -> None:
         output = model(torch.ones(2, 4))
     assert model.weight.dtype == torch.float32
     assert output.dtype == torch.bfloat16
+
+
+def test_distributed_local_device_is_bound_before_process_group_init(
+    monkeypatch,
+) -> None:
+    events = []
+    for name, value in {
+        "RANK": "0",
+        "LOCAL_RANK": "0",
+        "WORLD_SIZE": "1",
+        "MASTER_ADDR": "127.0.0.1",
+        "MASTER_PORT": "29599",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(torch.distributed, "is_available", lambda: True)
+    monkeypatch.setattr(torch.distributed, "is_gloo_available", lambda: True)
+    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: False)
+    monkeypatch.setattr(
+        torch.distributed,
+        "init_process_group",
+        lambda *args, **kwargs: events.append(("init", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        ProcessContext,
+        "_bind_local_device",
+        staticmethod(lambda requested, *, local_rank: events.append(("bind", requested, local_rank))),
+    )
+
+    context = ProcessContext.create(
+        ExecutionSpec.from_mapping(
+            {
+                "backend": "torch_ddp",
+                "process_group_backend": "gloo",
+                "expected_world_size": 1,
+            }
+        ),
+        requested_device="cuda:0",
+    )
+
+    assert [event[0] for event in events] == ["bind", "init"]
+    assert context.local_rank == 0
+
+
+def test_cuda_and_npu_device_binding_are_explicit(monkeypatch) -> None:
+    cuda_calls = []
+    monkeypatch.setattr(torch.cuda, "set_device", cuda_calls.append)
+    ProcessContext._bind_local_device("cuda:2", local_rank=2)
+    assert cuda_calls == [2]
+    with pytest.raises(SpecError, match="disagrees with LOCAL_RANK"):
+        ProcessContext._bind_local_device("cuda:1", local_rank=2)
+
+    npu_calls = []
+    original_device = torch.device
+    monkeypatch.setattr(
+        torch,
+        "device",
+        lambda value: (
+            SimpleNamespace(type="npu", index=None)
+            if value == "npu"
+            else original_device(value)
+        ),
+    )
+    monkeypatch.setattr(
+        torch,
+        "npu",
+        SimpleNamespace(set_device=npu_calls.append),
+        raising=False,
+    )
+    ProcessContext._bind_local_device("npu", local_rank=3)
+    assert npu_calls == [3]

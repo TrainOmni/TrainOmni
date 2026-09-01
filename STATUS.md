@@ -1,8 +1,8 @@
 # Status
 
-TrainOmni Framework replacement v0.1.0 is complete for the current single-GPU
-multimodal-understanding engineering scope. The rejected pre-redesign code is
-archive-only and is not a second active implementation.
+TrainOmni Framework replacement v0.1.1 is the corrected current implementation
+for the documented multimodal-understanding engineering scope. The rejected
+pre-redesign code is archive-only and is not a second active implementation.
 
 ## Completed scope
 
@@ -30,6 +30,17 @@ archive-only and is not a second active implementation.
 - Split atomic checkpointing records model/optimizer/runtime identities and state;
   exact resume, model-only load, held-out evaluation and structured resource/update
   evidence are implemented.
+- Framework builtin provenance, remote/local Transformers asset identity and
+  Parquet/Arrow snapshot identity are explicit. Unpinned external assets cannot
+  claim checkpointed exact resume.
+- Gradient accumulation uses one globally reduced semantic denominator across all
+  microbatches/ranks. A two-rank Gloo oracle covers unequal local token counts.
+- Finite sources flush packer state and expose partial/drop-last behavior;
+  multi-rank finite or unknown exhaustion fails before reading until an equal-step
+  sampler exists.
+- Rank-zero checkpoint/materialization failures are broadcast without a stranded
+  barrier. Rank-invariant distributed objective state is portable to single-process
+  model-only evaluation; rank-dependent state fails closed.
 - FSDP2 uses upstream distributed state-dict APIs for portable full training state.
   Checkpoint-disabled diagnostic runs are explicit and non-resumable. DeepSpeed
   checkpointing is not claimed and fails before training.
@@ -40,14 +51,16 @@ archive-only and is not a second active implementation.
 
 ## Verification evidence
 
-- Full source suite: **105 passed, 1 skipped**. The only skip is the POSIX launcher
+- Full source suite: **155 passed, 1 skipped**. The only skip is the POSIX launcher
   execution test on the current Windows host.
 - Ruff: clean across `src/trainomni` and `tests`.
 - Python compileall: passed with bytecode directed outside Framework.
-- Wheel: `trainomni-0.1.0-py3-none-any.whl` built successfully; SHA-256
-  `e148f4381b331e6b5818e72d4c2c28d0c3b9ff4d78af17a45362e903b3cd63cd`.
-- Isolated wheel import/CLI: version `0.1.0`; the current source catalog has 38
+- Wheel: `trainomni-0.1.1-py3-none-any.whl` built successfully; SHA-256
+  `84cecdee98e7beccadd6a9c93e6cf77ac8559b4846a7836984c004afb3da4ffd`.
+- Isolated wheel import/CLI: version `0.1.1`; the current source catalog has 41
   builtin descriptors and CLI help passes.
+- Installed-wheel corrected-path subset: **61 passed**; its builtin source digest
+  exactly matches the editable tree (`690e0f0d0b7c61ed72b784faf66e9d6a898424eb48ff8cfc7b5fd72956ff6d1e`).
 - Installed-wheel execution subset: **12 passed**, covering strict execution and
   checkpoint specs, deterministic rank data, world-size-one DDP/FSDP2 checkpoint
   and resume, and the Windows DeepSpeed fail-closed gate.
@@ -83,6 +96,9 @@ archive-only and is not a second active implementation.
   The target Qwen3.5-vision/MiniCPM5 model additionally completed two-step DDP and
   FSDP2 training plus held-out evaluation on the RTX 4060 Ti. These are honest
   world-size-one backend gates; multi-rank remains server work.
+- Two CPU/Gloo ranks additionally passed unequal-denominator accumulated DDP loss
+  against a single global-batch oracle and coordinated rank-zero checkpoint and
+  run-identity filesystem failures without deadlock.
 - A deterministic medium fixture was built from 300 diagram and 1,280 InterGPS
   rows. Connector alignment, full multimodal CPT, full SFT, LoRA SFT, cached dense
   KD, cached-reference DPO and LoRA DPO each completed 16 distinct-data optimizer
@@ -90,7 +106,7 @@ archive-only and is not a second active implementation.
   were finite/nonzero. See
   `docs/verification/real-vlm-medium-data-20260822.md`.
 
-## Explicitly outside v0.1.0
+## Explicitly outside v0.1.1
 
 - Performance and model-quality characterization beyond the completed engineering
   gates. The medium-data loss curves are observations, not quality claims.

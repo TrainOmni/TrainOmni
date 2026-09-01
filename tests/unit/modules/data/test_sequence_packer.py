@@ -81,6 +81,18 @@ def test_sequence_packer_buffer_resumes_exactly_and_validates_state() -> None:
         restored.load_state_dict({"buffer": state["buffer"], "tokens": 1})
 
 
+def test_sequence_packer_flush_emits_the_finite_tail_once() -> None:
+    packer = SequencePacker(config())
+    assert packer.add(example("tail", [1, 2, 3], modal_position=1)) == ()
+
+    (tail,) = packer.flush()
+
+    assert tail.model_inputs["input_ids"].tolist() == [1, 2, 3, 0, 0]
+    assert tail.model_inputs["attention_mask"].tolist() == [1, 1, 1, 0, 0]
+    assert tail.labels.tolist() == [1, 2, 3, -100, -100]
+    assert packer.flush() == ()
+
+
 def test_sequence_packer_rejects_unknown_or_pre_padded_fields() -> None:
     packer = SequencePacker(
         SequencePackerConfig(max_length=5, pad_token_id=0)

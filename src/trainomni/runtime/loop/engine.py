@@ -62,7 +62,14 @@ class TrainEngine:
         run: RunSpec,
         task_digest: str,
         module_lock: dict[str, str],
+        reproducible: bool = True,
+        provenance_issues: tuple[str, ...] = (),
     ) -> None:
+        if run.checkpoint.enabled and not reproducible:
+            raise SpecError(
+                "exact-resume checkpointing requires immutable external asset identity: "
+                + "; ".join(provenance_issues)
+            )
         self.objective = objective
         self.stream = stream
         self.run = run
@@ -120,6 +127,8 @@ class TrainEngine:
             {
                 "task_digest": task_digest,
                 "run_digest": run.digest,
+                "reproducible": reproducible,
+                "provenance_issues": provenance_issues,
                 "device": str(self.device.device),
                 "precision": run.precision,
                 "execution": self.execution.metadata(),
@@ -165,9 +174,10 @@ class TrainEngine:
         return tuple(records)
 
     def _optimizer_step(self) -> StepMetrics:
-        accumulated_loss = 0.0
         term_totals: dict[str, list[float]] = {}
+        term_weights: dict[str, float] = {}
         objective_metric_totals: dict[str, float] = {}
+        local_normalization_denominator = 0.0
         accumulation = self.run.gradient_accumulation_steps
         for index in range(accumulation):
             self.micro_step = index
@@ -187,13 +197,25 @@ class TrainEngine:
                     context=context,
                     device=self.device,
                 )
-                normalized = bundle.total / accumulation
-                self.execution.backward(normalized, self.scaler)
-            accumulated_loss += float(bundle.total.detach().float().item())
+                denominator = next(iter(bundle.terms.values())).denominator
+                denominator_value = float(denominator.detach().float().item())
+                # Accumulate unnormalized local numerators.  A single effective-
+                # batch denominator is applied after all microbatches and ranks.
+                self.execution.backward(
+                    bundle.total * denominator.detach(),
+                    self.scaler,
+                )
+            local_normalization_denominator += denominator_value
             for name, term in bundle.terms.items():
                 values = term_totals.setdefault(name, [0.0, 0.0])
                 values[0] += float(term.numerator.detach().float().item())
                 values[1] += float(term.denominator.detach().float().item())
+                weight = float(term.weight)
+                if name in term_weights and term_weights[name] != weight:
+                    raise OptimizationError(
+                        f"loss term {name!r} changed weight across microbatches"
+                    )
+                term_weights[name] = weight
             for name, value in bundle.metrics.items():
                 if isinstance(value, torch.Tensor) and value.numel() == 1:
                     objective_metric_totals[name] = objective_metric_totals.get(
@@ -201,6 +223,17 @@ class TrainEngine:
                     ) + float(value.detach().float().item())
 
         self.execution.unscale_gradients(self.scaler)
+        global_normalization_denominator = self.process.reduce_float(
+            local_normalization_denominator,
+            reduction="sum",
+            device=self.device.device,
+        )
+        if not math.isfinite(global_normalization_denominator) or (
+            global_normalization_denominator <= 0
+        ):
+            self.optimizer.zero_grad(set_to_none=True)
+            raise OptimizationError("global loss denominator must be finite and positive")
+        self.execution.normalize_gradients(global_normalization_denominator)
         grad_norm = self.execution.clip_grad_norm(self.run.max_grad_norm)
         if not math.isfinite(grad_norm):
             self.optimizer.zero_grad(set_to_none=True)
@@ -231,11 +264,6 @@ class TrainEngine:
             )
             self.last_parameter_evidence = parameter_evidence
         resources = snapshot_resources(self.device.device)
-        accumulated_loss = self.process.reduce_float(
-            accumulated_loss / accumulation,
-            reduction="mean",
-            device=self.device.device,
-        )
         loss_terms = {
             name: self.process.reduce_float(
                 numerator, reduction="sum", device=self.device.device
@@ -245,6 +273,9 @@ class TrainEngine:
             )
             for name, (numerator, denominator) in term_totals.items()
         }
+        accumulated_loss = sum(
+            term_weights[name] * value for name, value in loss_terms.items()
+        )
         objective_metrics = {
             name: self.process.reduce_float(
                 value / accumulation,

@@ -9,7 +9,7 @@ from trainomni.artifacts.manifest import materialize_run_identity
 from trainomni.assembly.task_builder import TaskAssembly, build_task
 from trainomni.catalog.builtin import builtin_registry
 from trainomni.catalog.local import registry_for_task
-from trainomni.core.errors import SpecError
+from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.core.resolver import ModuleResolver
 from trainomni.runtime.loop.engine import StepMetrics, TrainEngine
 from trainomni.runtime.random import seed_everything
@@ -30,6 +30,7 @@ def assemble(
     *,
     task_path: str | Path,
     allow_local_code: bool = False,
+    operation: str = "all",
 ) -> tuple[TaskSpec, TaskAssembly]:
     path = Path(task_path).resolve()
     task = load_task(path)
@@ -39,7 +40,12 @@ def assemble(
         task_root=path.parent,
         allow_local_code=allow_local_code,
     )
-    assembly = build_task(task, ModuleResolver(registry), task_root=path.parent)
+    assembly = build_task(
+        task,
+        ModuleResolver(registry),
+        task_root=path.parent,
+        operation=operation,
+    )
     return task, assembly
 
 
@@ -68,17 +74,26 @@ def build_engine(*, task, assembly: TaskAssembly, run) -> TrainEngine:
         run=run,
         task_digest=task.digest,
         module_lock=dict(assembly.module_lock),
+        reproducible=assembly.reproducible,
+        provenance_issues=assembly.provenance_issues,
     )
     try:
-        if engine.process.is_primary:
+        def materialize_identity():
             materialize_run_identity(
                 output_root=run.checkpoint.directory.parent,
                 task=task,
                 run=run,
                 module_lock=assembly.module_lock,
                 parameter_selection=selection,
+                reproducible=assembly.reproducible,
+                provenance_issues=assembly.provenance_issues,
             )
-        engine.process.barrier()
+
+        engine.process.coordinate_primary(
+            materialize_identity,
+            owner="run identity materialization",
+            error_type=CheckpointError,
+        )
     except Exception:
         engine.close()
         raise
@@ -98,6 +113,7 @@ def train(
     task, assembly = assemble(
         task_path=task_path,
         allow_local_code=allow_local_code,
+        operation="train",
     )
     engine = build_engine(task=task, assembly=assembly, run=run)
     try:

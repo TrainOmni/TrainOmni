@@ -72,6 +72,20 @@ encoder and positions supplied by ModelIO must be exactly equal. This prevents a
 valid-looking feature tensor from being fused at silently different token
 positions.
 
+Builtin prefix fusion prepends the validity mask and regenerates ordinary 2-D
+`position_ids` for the expanded sequence. It rejects `cache_position`,
+`rope_deltas`, higher-rank/model-specific position layouts and other
+`*_positions` arguments rather than forwarding stale coordinates. A task-local
+fusion must own those model-specific transformations. Token replacement supports
+unequal modal-token counts through `ModalFeatures.mask`; padded modal slots must
+use the `-1` position sentinel and are never written into text embeddings.
+
+Offline DPO treats media and every non-token-sequence model input as common pair
+state. Chosen/rejected prompt prefixes must match exactly, and only the fixed
+token-sequence fields may vary by branch. Each branch is additionally bound to its
+own full input IDs, true target positions/IDs, reference producer and chosen or
+rejected identity before either policy forward.
+
 ## Parameter and runtime ownership
 
 Composite components remain directly named PyTorch submodules. Parameter policy,

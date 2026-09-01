@@ -19,6 +19,7 @@ from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import ObjectiveError
 from trainomni.core.module import ModuleDescriptor, ModuleId
 
+from .._ops.cache_identity import validate_cache_binding
 from .._ops.causal_shift import causal_shift
 from .._ops.reductions import reduce_token_losses
 from .._ops.token_ce import token_cross_entropy
@@ -32,9 +33,19 @@ class DenseKDObjective:
         self.config = config
 
     def requirements(self) -> ObjectiveRequirements:
+        prefix = f"__cache_identity__{self.config.teacher_logits_field}__"
         return ObjectiveRequirements(
             outputs=OutputRequirements(logits=True),
-            supervision_fields=frozenset({self.config.teacher_logits_field}),
+            supervision_fields=frozenset(
+                {
+                    self.config.teacher_logits_field,
+                    prefix + "input_ids_sha256",
+                    prefix + "supervised_positions_sha256",
+                    prefix + "target_token_ids_sha256",
+                    prefix + "producer_identity_sha256",
+                    prefix + "branch",
+                }
+            ),
         )
 
     def plan(self, batch: OmniBatch, context: ObjectiveContext) -> ForwardPlan:
@@ -52,6 +63,15 @@ class DenseKDObjective:
             raise ObjectiveError(
                 "dense KD teacher positions must align with full or causal-shifted labels"
             )
+        validate_cache_binding(
+            batch=batch,
+            cache_field=self.config.teacher_logits_field,
+            inputs=batch.model_inputs,
+            labels=batch.labels,
+            ignore_index=self.config.ignore_index,
+            branch_code=0,
+            producer_identity_sha256=self.config.producer_identity_sha256,
+        )
         return ForwardPlan.single(
             ForwardRequest(
                 name="policy",

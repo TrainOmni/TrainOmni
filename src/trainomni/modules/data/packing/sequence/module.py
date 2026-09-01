@@ -268,6 +268,11 @@ class SequencePacker:
             emitted.append(self._emit())
         return tuple(emitted)
 
+    def flush(self) -> tuple[SupervisedExample, ...]:
+        """Emit a final padded pack when a finite source reaches EOF."""
+
+        return () if not self._buffer else (self._emit(),)
+
     def state_dict(self) -> Mapping[str, object]:
         return {"buffer": tuple(self._buffer), "tokens": self._tokens}
 

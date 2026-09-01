@@ -56,22 +56,31 @@ class TokenReplaceFusion(nn.Module):
         modal = merged.embeddings
         if modal.ndim != 3 or modal.shape[:2] != modal_positions.shape:
             raise SpecError("modal embeddings and modal_positions are not aligned")
+        valid = merged.mask
+        if valid is None:
+            valid = torch.ones_like(modal_positions, dtype=torch.bool)
+        elif not isinstance(valid, torch.Tensor) or valid.shape != modal_positions.shape:
+            raise SpecError("modal feature mask must align with modal_positions")
+        else:
+            valid = valid.bool()
+        if bool(modal_positions[~valid].ne(-1).any().item()):
+            raise SpecError("padded modal slots require modal_positions=-1")
+        valid_positions = modal_positions[valid]
         if bool(
-            (
-                modal_positions.lt(0)
-                | modal_positions.ge(input_ids.shape[1])
-            ).any().item()
+            (valid_positions.lt(0) | valid_positions.ge(input_ids.shape[1])).any().item()
         ):
             raise SpecError("modal_positions contains an out-of-range index")
         if self.config.strict_count:
-            for positions in modal_positions:
+            for positions, row_valid in zip(modal_positions, valid, strict=True):
+                positions = positions[row_valid]
                 if positions.unique().numel() != positions.numel():
                     raise SpecError(
                         "strict token-replacement fusion rejects duplicate positions"
                     )
         embeddings = language.embed(input_ids).clone()
         batch_indices = torch.arange(input_ids.shape[0], device=input_ids.device).unsqueeze(1)
-        embeddings[batch_indices, modal_positions] = modal.to(embeddings.dtype)
+        batch_indices = batch_indices.expand_as(modal_positions)[valid]
+        embeddings[batch_indices, valid_positions] = modal.to(embeddings.dtype)[valid]
         return language.forward_embeddings(
             embeddings,
             attention_mask=attention_mask,

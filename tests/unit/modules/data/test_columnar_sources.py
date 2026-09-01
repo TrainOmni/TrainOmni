@@ -75,7 +75,12 @@ def build_adapter():
     return adapter_descriptor().build(reference, BuildContext("task"))
 
 
-def build_parquet(path: Path, *, repeat: bool = False):
+def build_parquet(
+    path: Path,
+    *,
+    repeat: bool = False,
+    dataset_manifest_sha256: str | None = None,
+):
     reference = ModuleRef.from_mapping(
         {
             "module": "data_source:trainomni/parquet@1",
@@ -84,6 +89,7 @@ def build_parquet(path: Path, *, repeat: bool = False):
                 "paths": [str(path)],
                 "batch_rows": 2,
                 "repeat": repeat,
+                "dataset_manifest_sha256": dataset_manifest_sha256,
             },
         },
         field_name="data.source",
@@ -91,7 +97,12 @@ def build_parquet(path: Path, *, repeat: bool = False):
     return parquet_descriptor().build(reference, BuildContext("task"))
 
 
-def build_arrow(path: Path, *, repeat: bool = False):
+def build_arrow(
+    path: Path,
+    *,
+    repeat: bool = False,
+    dataset_manifest_sha256: str | None = None,
+):
     reference = ModuleRef.from_mapping(
         {
             "module": "data_source:trainomni/arrow@1",
@@ -100,6 +111,7 @@ def build_arrow(path: Path, *, repeat: bool = False):
                 "paths": [str(path)],
                 "batch_rows": 2,
                 "repeat": repeat,
+                "dataset_manifest_sha256": dataset_manifest_sha256,
             },
         },
         field_name="data.source",
@@ -215,6 +227,47 @@ def test_parquet_rank_and_worker_partitions_are_complete_and_disjoint(
     for left_index, left in enumerate(partitions):
         for right in partitions[left_index + 1 :]:
             assert left.isdisjoint(right)
+
+
+def test_columnar_resume_uses_semantic_manifest_not_physical_root(
+    tmp_path: Path,
+) -> None:
+    original = tmp_path / "original" / "samples.parquet"
+    original.parent.mkdir()
+    parquet.write_table(pa.Table.from_pylist(rows(4)), original, row_group_size=2)
+    manifest = "d" * 64
+
+    source = build_parquet(
+        original,
+        repeat=True,
+        dataset_manifest_sha256=manifest,
+    )
+    source.next_record()
+    state = source.state_dict()
+    expected = source.next_record()
+
+    moved = tmp_path / "relocated" / original.name
+    moved.parent.mkdir()
+    moved.write_bytes(original.read_bytes())
+    restored = build_parquet(
+        moved,
+        repeat=True,
+        dataset_manifest_sha256=manifest,
+    )
+    restored.load_state_dict(state)
+    actual = restored.next_record()
+    assert actual.fields["id"] == expected.fields["id"]
+    assert actual.sample_id == expected.sample_id
+    assert actual.position == expected.position
+    assert restored.state_dict()["identity"] == state["identity"]
+
+    changed_snapshot = build_parquet(
+        moved,
+        repeat=True,
+        dataset_manifest_sha256="e" * 64,
+    )
+    with pytest.raises(CheckpointError, match="dataset identity changed"):
+        changed_snapshot.load_state_dict(state)
 
 
 def test_parquet_adapter_builds_through_the_complete_data_pipeline(

@@ -25,12 +25,12 @@ which hardware was actually used.
 | Local media resolution and SHA-256 validation | verified | local files only |
 | Pillow image decode | verified | RGB/RGBA/L and max-pixel gate |
 | Video frame sampling | verified on real VLM CUDA for ordered frame lists | canonical `video` block → three unequal vision grids → train/checkpoint/evaluate passed; container-path decoding remains optional PyAV and is not hardware-tested |
-| Hash-pinned safetensors sidecar cache | verified | index and shard digest failures occur before model forward |
+| Hash-pinned safetensors sidecar cache | verified | schema-v2 index/shard digests plus per-sample expanded-input, target-position/ID, producer and branch bindings; corruption fails before model forward |
 | Transformers processor/chat template/assistant mask | verified with contract fixture | concrete processors remain model-task integration work |
 | Variable multimodal tensor collation | verified on real VLM CUDA batch | stack/pad/concat/list are explicit; batch-size 2 passed unequal text lengths, image grids and one/two images per sample |
 | Fixed-length multimodal sequence packing | verified on real VLM CUDA | two multimodal samples were packed into one language forward; boundary label masking, expanded visual-prefix block-diagonal causal isolation, finite backward/update and held-out evaluation passed |
 | Multiple ordered modal branches | verified | independent encoder/connector per branch; audio can be added as another branch |
-| Prefix, token replacement, cross-attention fusion | verified with fixtures | cross-attention requires a language module declaring `language.cross_attention` |
+| Prefix, token replacement, cross-attention fusion | verified with fixtures | prefix regenerates ordinary expanded `position_ids` and rejects stale model-specific position/cache fields; token replacement supports masked unequal modal counts; cross-attention requires `language.cross_attention` |
 | Builtin multi-dataset weighted mixer | verified on real VLM CUDA | two named JSONL sources, 1:3 weights, namespaced IDs and structured counts reached a batch-size-2 train/checkpoint/evaluate route; child cursors/counts and immutable mixture identity also survive fresh-process exact resume |
 
 ## Parameter and execution policies
@@ -44,7 +44,7 @@ which hardware was actually used.
 | AdamW, including `foreach=false` and per-group LR/weight decay | verified | optimizer type/version/state dtype recorded in checkpoint metadata |
 | AdamW8bit | unsupported | no bitsandbytes dependency or silent downgrade |
 | Constant/linear/cosine schedule | implemented; exact state resume verified | native PyTorch `LambdaLR` |
-| Gradient accumulation and norm clipping | verified on real VLM CUDA | batch-size 2 × accumulation 2 records two micro-batches per optimizer step, finite gradients and actual connector updates |
+| Gradient accumulation and norm clipping | verified on real VLM CUDA plus two-rank CPU oracle | local loss numerators and globally summed denominators produce the exact effective-batch mean across unequal microbatch/rank token counts before clipping |
 | Component activation checkpointing (`use_reentrant=false` supported) | verified on real vision + LLM components | full-model pretraining/SFT apply both component hooks; isolated memory-benefit attribution is not claimed |
 | `torch.compile` | verified with CPU `eager` backend | compiled callable is separate; checkpoint keys remain unwrapped |
 | FP32 | verified on CPU | full lifecycle |
@@ -58,10 +58,10 @@ which hardware was actually used.
 | Capability | Status | Boundary |
 | --- | --- | --- |
 | Atomic split checkpoint | verified | `model.safetensors`, `optimizer.pt`, `runtime.pt`, manifest SHA-256 |
-| Exact resume | verified on real VLM CUDA routes | full SFT, pretraining, alignment, offline KD and offline DPO match uninterrupted logical model/AdamW/runtime state and final evidence after fresh-process resume |
-| Distributed runtime-state identity | implemented and world-size-one verified | every rank contributes scheduler/objective/data/scaler/RNG state; topology changes fail; multi-rank server gate remains |
+| Exact resume | verified on real VLM CUDA routes | full SFT, pretraining, alignment, offline KD and offline DPO match uninterrupted logical model/AdamW/runtime state; checkpoint output directories are relocatable, while pre-fix framework provenance is rejected |
+| Distributed runtime-state identity | implemented; two-rank Gloo control-path verified | every rank contributes scheduler/objective/data/scaler/RNG state; topology changes fail; rank-invariant objective state supports single-process model-only evaluation while rank-dependent state fails closed |
 | FSDP2 portable full-state checkpoint | CUDA world-size-one verified | upstream distributed state-dict APIs bridge DTensor model/optimizer state to the atomic TrainOmni format; multi-rank exact resume remains a server gate |
-| Model-only evaluation/export load | verified | does not allocate/load optimizer state; objective restore is optional; a validated training checkpoint may be relocated and consumed with a different evaluation/export RunSpec, while task/module/framework/file integrity remains strict |
+| Model-only evaluation/export load | verified | does not build the unused training source or allocate optimizer state; objective restore is optional; a validated checkpoint may be relocated and consumed with a different evaluation/export RunSpec while task/module/framework/file integrity remains strict |
 | Held-out evaluation | verified | separate data stream, eval/inference/autocast/device semantics; config-addressed immutable receipts allow multiple batch/device/precision configs per checkpoint and are idempotent per config |
 | Generic full-state safetensors export | verified | composite and monolithic fixtures |
 | Transformers `save_pretrained` export | verified in a fresh process | reloaded logits are bit-equal for the FP32 tiny model |
@@ -69,8 +69,10 @@ which hardware was actually used.
 | Task-local module extensions | verified on real VLM CUDA | a SHA-pinned external Objective owns a distinct position-weighted, label-smoothed FP32 CE and completes train/checkpoint/evaluate; all module kinds share descriptor/config/capability/source-hash rules |
 | Semantic attention policy | verified on real VLM CUDA | model-default and packed block-diagonal policies execute through the model boundary; incompatible packer/policy composition fails capability preflight |
 | Runtime attention kernel | eager and SDPA verified on real VLM CUDA | identical semantic Task ran with eager and SDPA chosen only by RunSpec; applied model boundaries are recorded; FlashAttention is not claimed |
-| Framework / Task / Run / Output root separation | verified | task and run digests are distinct; physical `checkpoint.directory` is excluded from RunSpec identity while every semantic resume field remains strict; outputs are immutable receipts |
-| Parquet/Arrow source identity | verified as cursor compatibility only | paths, lightweight file metadata and fragment layout are checked; no full-file/content hash or content-provenance claim |
+| Framework / Task / Run / Output root separation | verified | physical `checkpoint.directory` is excluded from RunSpec identity and stored in a separate location receipt; same-root directory relocation plus full resume passes |
+| External Transformers asset identity | verified | immutable remote commit revision or producer-owned local asset-manifest digest enters task/module/checkpoint identity; unpinned assets are marked non-reproducible and checkpoint/exact-resume claims fail closed |
+| Parquet/Arrow source identity | verified | producer-owned dataset-manifest digest plus logical fragment layout is semantic identity; physical roots may move; changed manifests fail exact restore; payloads are not repeatedly hashed by readers |
+| Finite-source completion | verified single-process | packer tail flush plus explicit partial/drop-last behavior; multi-rank finite/unknown exhaustion fails before reading until an equal-step sampler exists |
 
 ## Distributed and platform boundary
 
@@ -78,7 +80,7 @@ which hardware was actually used.
 | --- | --- | --- |
 | Single process/device | verified on CPU and real VLM CUDA | default direct PyTorch runtime |
 | CUDA single-device | real VLM five-stage lifecycle and exact resume verified | Windows, RTX 4060 Ti, Torch 2.13.0+cu130; uninterrupted train/checkpoint/evaluate/export, strict reload and five-route fresh-process resume pass |
-| DDP | implemented; CUDA world-size-one real backend verified | direct PyTorch DDP, real process group, rank-sharded data, accumulation `no_sync`, global metrics and atomic resume; real multi-rank Linux/NCCL is a server gate |
+| DDP | implemented; CUDA world-size-one and CPU two-rank Gloo verified | direct PyTorch DDP, rank sharding, `no_sync`, exact global-denominator loss oracle and coordinated rank-zero checkpoint/materialization failure; Linux/NCCL real-model multi-rank remains a server gate |
 | FSDP2 | implemented; CUDA world-size-one real backend verified | direct PyTorch `fully_shard`, model-declared units, accumulation sync control and portable checkpoint/eval/resume pass; real multi-rank Linux/NCCL is a server gate |
 | DeepSpeed ZeRO 0/1/2/3 | thin optional Linux adapter; needs server execution | upstream owns backward/step/partitioning; Windows fails closed, no fallback; native ZeRO checkpoint bridge is absent so checkpoint-enabled runs fail closed |
 | Deterministic distributed data and metrics | implemented; world-size-one runtime plus multi-rank deterministic unit gate | disjoint rank streams and exact cursors; loss/term/objective/resource reductions; per-rank data metrics preserved without guessed aggregation |

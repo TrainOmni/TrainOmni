@@ -14,7 +14,7 @@ import torch
 
 from trainomni.contracts.distribution import distribution_hints
 from trainomni.core.errors import SpecError
-from trainomni.runtime.optimization.gradients import clip_gradients
+from trainomni.runtime.optimization.gradients import clip_gradients, scale_gradients
 from trainomni.runtime.optimization.optimizer import build_optimizer
 from trainomni.runtime.optimization.scheduler import build_scheduler
 from trainomni.specs.run import RunSpec
@@ -61,6 +61,12 @@ class DeepSpeedExecutionBackend:
     def unscale_gradients(self, scaler: Any | None) -> None:
         if scaler is not None:
             raise SpecError("DeepSpeed owns loss scaling; external GradScaler is invalid")
+
+    def normalize_gradients(self, global_denominator: float) -> None:
+        scale_gradients(
+            self.canonical_model.parameters(),
+            self.process.world_size / global_denominator,
+        )
 
     def clip_grad_norm(self, max_norm: float | None) -> float:
         # DeepSpeed applies configured clipping in engine.step(). This local

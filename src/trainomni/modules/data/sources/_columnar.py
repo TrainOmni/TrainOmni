@@ -100,23 +100,29 @@ class ColumnarRecordSource:
         iter_fragment: Callable[[PhysicalFragment], Iterable[Mapping[str, Any]]],
         repeat: bool,
         format_name: str,
+        dataset_manifest_sha256: str | None,
     ) -> None:
         self.dataset_id = dataset_id
         self.fragments = tuple(fragments)
         self._iter_fragment = iter_fragment
         self.repeat = repeat
+        self.is_finite = not repeat
         self.format_name = format_name
         self.identity = identity_digest(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "dataset_id": dataset_id,
                 "format": format_name,
+                "dataset_manifest_sha256": dataset_manifest_sha256,
                 "fragments": [
                     {
-                        "path": fragment.path.as_posix(),
                         "fragment_id": fragment.fragment_id,
                         "rows": fragment.rows,
-                        "metadata": dict(fragment.metadata),
+                        "metadata": {
+                            key: value
+                            for key, value in fragment.metadata.items()
+                            if key not in {"file_size", "file_mtime_ns"}
+                        },
                     }
                     for fragment in self.fragments
                 ],
@@ -207,17 +213,13 @@ class ColumnarRecordSource:
             row_index = self.row_cursor
             self.row_cursor += 1
             self.emitted += 1
-            sample_id = (
-                f"{self.dataset_id}::{fragment.path.name}::"
-                f"{fragment.fragment_id}::{row_index}"
-            )
+            sample_id = f"{self.dataset_id}::{fragment.fragment_id}::{row_index}"
             return DataRecord(
                 sample_id=sample_id,
                 fields=fields,
                 source=self.dataset_id,
                 position={
                     "format": self.format_name,
-                    "path": fragment.path.as_posix(),
                     "fragment": fragment.fragment_id,
                     "row": row_index,
                     "epoch": self.epoch,

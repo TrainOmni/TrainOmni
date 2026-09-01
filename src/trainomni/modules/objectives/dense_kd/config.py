@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DenseKDConfig:
+    producer_identity_sha256: str
     ce_weight: float = 0.5
     kd_weight: float = 0.5
     temperature: float = 2.0
@@ -29,3 +30,8 @@ class DenseKDConfig:
             raise ValueError("reduction must be token_mean or sample_mean")
         if not self.teacher_logits_field:
             raise ValueError("teacher_logits_field must not be empty")
+        if len(self.producer_identity_sha256) != 64 or any(
+            character not in "0123456789abcdef"
+            for character in self.producer_identity_sha256
+        ):
+            raise ValueError("producer_identity_sha256 must be a lowercase SHA-256 digest")

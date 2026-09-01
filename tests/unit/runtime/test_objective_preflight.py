@@ -31,7 +31,9 @@ def test_missing_objective_supervision_fails_before_model_forward() -> None:
     with pytest.raises(ObjectiveError, match="before forward"):
         execute_forward_plan(
             model=model,
-            objective=DenseKDObjective(DenseKDConfig()),
+            objective=DenseKDObjective(
+                DenseKDConfig(producer_identity_sha256="a" * 64)
+            ),
             batch=batch,
             context=ObjectiveContext(0, 0),
             device=DeviceContext("cpu", "fp32"),
