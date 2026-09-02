@@ -121,6 +121,68 @@ def test_collator_configured_modes_fail_closed() -> None:
         collator.collate(examples)
 
 
+def test_collator_rejects_dtype_mismatch_before_padding_or_promotion() -> None:
+    unequal = (
+        SupervisedExample(
+            "int",
+            {"input_ids": torch.tensor([1, 2], dtype=torch.int64)},
+            torch.tensor([1, 2]),
+        ),
+        SupervisedExample(
+            "float",
+            {"input_ids": torch.tensor([3.5, 4.5, 5.5], dtype=torch.float32)},
+            torch.tensor([3, 4, 5]),
+        ),
+    )
+    with pytest.raises(SpecError, match="tensor dtypes differ.*input_ids"):
+        MultimodalCollator(MultimodalCollatorConfig()).collate(unequal)
+
+    equal = (
+        SupervisedExample(
+            "int",
+            {"input_ids": torch.tensor([1, 2], dtype=torch.int64)},
+            torch.tensor([1, 2]),
+        ),
+        SupervisedExample(
+            "float",
+            {"input_ids": torch.tensor([3.5, 4.5], dtype=torch.float32)},
+            torch.tensor([3, 4]),
+        ),
+    )
+    with pytest.raises(SpecError, match="tensor dtypes differ.*input_ids"):
+        MultimodalCollator(MultimodalCollatorConfig()).collate(equal)
+
+
+def test_collator_rejects_nested_supervision_and_label_dtype_mismatch() -> None:
+    nested = (
+        SupervisedExample(
+            "a",
+            {"input_ids": torch.tensor([1])},
+            torch.tensor([1]),
+            {"cache": {"mask": torch.tensor([1], dtype=torch.int64)}},
+        ),
+        SupervisedExample(
+            "b",
+            {"input_ids": torch.tensor([2])},
+            torch.tensor([2]),
+            {"cache": {"mask": torch.tensor([1.0], dtype=torch.float32)}},
+        ),
+    )
+    with pytest.raises(SpecError, match="tensor dtypes differ.*cache.mask"):
+        MultimodalCollator(MultimodalCollatorConfig()).collate(nested)
+
+    labels = (
+        SupervisedExample(
+            "a", {"input_ids": torch.tensor([1])}, torch.tensor([1])
+        ),
+        SupervisedExample(
+            "b", {"input_ids": torch.tensor([2])}, torch.tensor([2.0])
+        ),
+    )
+    with pytest.raises(SpecError, match="tensor dtypes differ for labels"):
+        MultimodalCollator(MultimodalCollatorConfig()).collate(labels)
+
+
 def test_left_padding_with_position_dependent_fields_fails_closed() -> None:
     examples = (
         SupervisedExample(

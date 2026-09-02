@@ -136,13 +136,29 @@ class MixtureSource:
             raise CheckpointError("mixture child source names changed")
         if not isinstance(active_sources, (tuple, list)):
             raise CheckpointError("mixture active source state is not a sequence")
-        normalized_active = tuple(str(name) for name in active_sources)
+        if any(not isinstance(name, str) for name in active_sources):
+            raise CheckpointError("mixture active source names are invalid")
+        normalized_active = tuple(active_sources)
         if len(normalized_active) != len(set(normalized_active)) or not set(
             normalized_active
         ).issubset(self.sources):
             raise CheckpointError("mixture active source names are invalid")
-        cursor = int(state["cursor"])
-        normalized_counts = {name: int(counts[name]) for name in self.sources}
+        canonical_active = tuple(
+            name for name in self.sources if name in set(normalized_active)
+        )
+        if normalized_active != canonical_active:
+            raise CheckpointError(
+                "mixture active sources must preserve configuration order"
+            )
+        cursor = state["cursor"]
+        if not isinstance(cursor, int) or isinstance(cursor, bool):
+            raise CheckpointError("mixture cursor must be an integer")
+        normalized_counts = {}
+        for name in self.sources:
+            value = counts[name]
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise CheckpointError("mixture source counts must be integers")
+            normalized_counts[name] = value
         if cursor < 0 or any(value < 0 for value in normalized_counts.values()):
             raise CheckpointError("mixture cursor and counts must be non-negative")
         if sum(normalized_counts.values()) != cursor:

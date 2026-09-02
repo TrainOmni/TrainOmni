@@ -6,6 +6,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
+from trainomni.modules.data._validation import (
+    normalize_string_sequence,
+    require_int,
+    require_number,
+)
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SequencePackerConfig:
@@ -27,10 +33,15 @@ class SequencePackerConfig:
     )
 
     def __post_init__(self) -> None:
-        if self.max_length <= 1:
-            raise ValueError("max_length must be greater than one")
-        if self.max_samples_per_pack is not None and self.max_samples_per_pack <= 0:
-            raise ValueError("max_samples_per_pack must be positive")
+        require_int(self.max_length, field="max_length", minimum=2)
+        require_int(self.pad_token_id, field="pad_token_id")
+        require_int(self.ignore_index, field="ignore_index")
+        if self.max_samples_per_pack is not None:
+            require_int(
+                self.max_samples_per_pack,
+                field="max_samples_per_pack",
+                minimum=1,
+            )
         names = (
             self.input_ids_field,
             self.attention_mask_field,
@@ -38,7 +49,9 @@ class SequencePackerConfig:
             self.segment_ids_field,
             self.block_attention_field,
         )
-        if any(not name for name in names) or len(names) != len(set(names)):
+        if any(not isinstance(name, str) or not name for name in names) or len(
+            names
+        ) != len(set(names)):
             raise ValueError("sequence packer core field names must be non-empty and unique")
         groups = {
             "sequence_fields": self.sequence_fields,
@@ -48,11 +61,10 @@ class SequencePackerConfig:
         }
         reserved = set(names)
         configured = []
+        normalized_groups = {}
         for owner, values in groups.items():
-            if any(not isinstance(value, str) or not value for value in values):
-                raise ValueError(f"{owner} must contain non-empty field names")
-            if len(values) != len(set(values)):
-                raise ValueError(f"{owner} contains duplicate fields")
+            values = normalize_string_sequence(values, field=owner)
+            normalized_groups[owner] = values
             overlap = sorted(set(values) & reserved)
             if overlap:
                 raise ValueError(f"{owner} contains reserved fields: {', '.join(overlap)}")
@@ -73,9 +85,10 @@ class SequencePackerConfig:
                 raise ValueError(
                     f"field_pad_values.{name} has no matching sequence_fields entry"
                 )
-            if not isinstance(value, int | float):
-                raise TypeError(f"field_pad_values.{name} must be numeric")
+            require_number(value, field=f"field_pad_values.{name}")
             pad_values[name] = value
+        for owner, values in normalized_groups.items():
+            object.__setattr__(self, owner, values)
         object.__setattr__(
             self,
             "field_pad_values",

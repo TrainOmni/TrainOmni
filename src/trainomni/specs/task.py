@@ -163,23 +163,26 @@ class DataPipelineSpec:
         raw_sources = value.get("sources", {})
         if not isinstance(raw_sources, Mapping):
             raise SpecError("data.sources must be a mapping")
-        sources = tuple(
-            (
-                str(name),
-                _ref(
-                    raw_source,
-                    field=f"data.sources.{name}",
-                    kind=ModuleKind.DATA_SOURCE,
-                ),
+        normalized_sources = []
+        for name, raw_source in raw_sources.items():
+            if not isinstance(name, str) or not name.strip() or name.strip().startswith("__"):
+                raise SpecError(
+                    "data source names must be non-empty strings and cannot start with '__'"
+                )
+            normalized_sources.append(
+                (
+                    name.strip(),
+                    _ref(
+                        raw_source,
+                        field=f"data.sources.{name}",
+                        kind=ModuleKind.DATA_SOURCE,
+                    ),
+                )
             )
-            for name, raw_source in sorted(
-                raw_sources.items(), key=lambda item: str(item[0])
-            )
-        )
-        if any(not name or name.startswith("__") for name, _ in sources):
-            raise SpecError(
-                "data source names must be non-empty and cannot start with '__'"
-            )
+        source_names = [name for name, _ in normalized_sources]
+        if len(source_names) != len(set(source_names)):
+            raise SpecError("data source names must remain unique after normalization")
+        sources = tuple(sorted(normalized_sources, key=lambda item: item[0]))
         raw_adapter = value.get("adapter")
         drop_last = value.get("drop_last", False)
         if not isinstance(drop_last, bool):
@@ -229,16 +232,25 @@ class ModelAssemblySpec:
         raw_components = value.get("components", {})
         if not isinstance(raw_components, Mapping):
             raise SpecError("model.components must be a mapping")
-        components = tuple(
-            (
-                str(name),
-                ModuleRef.from_mapping(
-                    _mapping(raw_ref, field=f"model.components.{name}"),
-                    field_name=f"model.components.{name}",
-                ),
+        normalized_components = []
+        for name, raw_ref in raw_components.items():
+            if not isinstance(name, str) or not name.strip():
+                raise SpecError("model component names must be non-empty strings")
+            normalized_components.append(
+                (
+                    name.strip(),
+                    ModuleRef.from_mapping(
+                        _mapping(raw_ref, field=f"model.components.{name}"),
+                        field_name=f"model.components.{name}",
+                    ),
+                )
             )
-            for name, raw_ref in sorted(raw_components.items(), key=lambda item: str(item[0]))
-        )
+        component_names = [name for name, _ in normalized_components]
+        if len(component_names) != len(set(component_names)):
+            raise SpecError(
+                "model component names must remain unique after normalization"
+            )
+        components = tuple(sorted(normalized_components, key=lambda item: item[0]))
         invalid_names = [
             name for name, _ in components if not name or name.startswith("__")
         ]

@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 
 from trainomni.core.assets import validate_asset_fields
+from trainomni.modules.data._validation import (
+    normalize_string_sequence,
+    require_bool,
+    require_int,
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -17,20 +22,18 @@ class ParquetSourceConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.dataset_id, str) or not self.dataset_id.strip():
             raise ValueError("Parquet dataset_id must not be empty")
-        if not isinstance(self.paths, (tuple, list)) or not self.paths:
-            raise ValueError("Parquet paths must be a non-empty sequence")
-        if any(not isinstance(path, str) or not path for path in self.paths):
-            raise ValueError("Parquet paths must contain non-empty strings")
-        if not isinstance(self.columns, (tuple, list)):
-            raise TypeError("Parquet columns must be a sequence")
-        if len(self.columns) != len(set(self.columns)):
-            raise ValueError("Parquet columns must be unique")
-        if self.batch_rows <= 0:
-            raise ValueError("Parquet batch_rows must be positive")
+        paths = normalize_string_sequence(
+            self.paths,
+            field="Parquet paths",
+            allow_empty_sequence=False,
+        )
+        columns = normalize_string_sequence(self.columns, field="Parquet columns")
+        require_int(self.batch_rows, field="Parquet batch_rows", minimum=1)
+        require_bool(self.repeat, field="Parquet repeat")
         validate_asset_fields(
             revision=None,
             asset_manifest_sha256=self.dataset_manifest_sha256,
         )
         object.__setattr__(self, "dataset_id", self.dataset_id.strip())
-        object.__setattr__(self, "paths", tuple(self.paths))
-        object.__setattr__(self, "columns", tuple(self.columns))
+        object.__setattr__(self, "paths", paths)
+        object.__setattr__(self, "columns", columns)

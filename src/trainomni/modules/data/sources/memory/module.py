@@ -17,12 +17,14 @@ def _sample_from_mapping(value: Mapping, index: int) -> OmniSample:
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise SpecError(f"memory sample[{index}] contains unknown keys: {', '.join(unknown)}")
-    raw_content = value.get("content")
-    raw_messages = value.get("messages")
-    if bool(raw_content) == bool(raw_messages):
+    has_content = "content" in value
+    has_messages = "messages" in value
+    if has_content == has_messages:
         raise SpecError(
             f"memory sample[{index}] requires exactly one of content or messages"
         )
+    raw_content = value["content"] if has_content else None
+    raw_messages = value["messages"] if has_messages else None
 
     def parse_block(raw_block, *, location: str):
         if not isinstance(raw_block, Mapping):
@@ -43,9 +45,11 @@ def _sample_from_mapping(value: Mapping, index: int) -> OmniSample:
 
     blocks = ()
     messages = ()
-    if raw_content:
-        if not isinstance(raw_content, (list, tuple)):
-            raise SpecError(f"memory sample[{index}].content must be a sequence")
+    if has_content:
+        if not isinstance(raw_content, (list, tuple)) or not raw_content:
+            raise SpecError(
+                f"memory sample[{index}].content must be a non-empty sequence"
+            )
         blocks = tuple(
             parse_block(
                 raw_block,
@@ -90,7 +94,7 @@ def _sample_from_mapping(value: Mapping, index: int) -> OmniSample:
         messages = tuple(parsed_messages)
     try:
         return OmniSample(
-            sample_id=str(value.get("sample_id", "")),
+            sample_id=value.get("sample_id"),
             content=blocks,
             metadata=value.get("metadata", {}),
             messages=messages,
@@ -121,9 +125,13 @@ class MemorySource:
     def load_state_dict(self, state):
         if set(state) != {"cursor"}:
             raise SpecError("invalid memory source state")
-        cursor = int(state["cursor"])
+        cursor = state["cursor"]
+        if not isinstance(cursor, int) or isinstance(cursor, bool):
+            raise SpecError("memory source cursor must be an integer")
         if cursor < 0:
             raise SpecError("memory source cursor must be non-negative")
+        if not self.repeat and cursor > len(self.samples):
+            raise SpecError("finite memory source cursor is out of range")
         self.cursor = cursor
 
 

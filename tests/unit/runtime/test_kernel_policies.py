@@ -119,3 +119,14 @@ def test_semantic_attention_policies_validate_default_and_packed_masks() -> None
                 "packed_segment_ids": segments,
             },
         )
+
+    with pytest.raises(SpecError, match="binary 0/1"):
+        packed.apply(
+            input_ids=input_ids,
+            attention_mask=torch.tensor([[1.0, 2.0, 1.0, 0.0]]),
+            modal_positions=None,
+            model_inputs={
+                "packed_attention_mask": block,
+                "packed_segment_ids": segments,
+            },
+        )

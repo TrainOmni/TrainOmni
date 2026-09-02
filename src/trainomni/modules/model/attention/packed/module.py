@@ -7,6 +7,7 @@ import torch
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
+from trainomni.modules.data._tensors import binary_mask
 
 from ..protocol import AttentionInputs
 from .config import PackedAttentionConfig
@@ -40,11 +41,17 @@ class PackedAttentionPolicy:
             )
         if not isinstance(segments, torch.Tensor) or segments.shape != input_ids.shape:
             raise SpecError("packed segment ids must align with input_ids")
-        if segments.is_floating_point():
+        if segments.dtype is torch.bool or segments.is_floating_point() or segments.is_complex():
             raise SpecError("packed segment ids must use an integer dtype")
-        if not isinstance(attention_mask, torch.Tensor) or attention_mask.shape != input_ids.shape:
-            raise SpecError("packed attention requires a 2D token-validity attention_mask")
-        valid = attention_mask.bool()
+        if block.device != input_ids.device or segments.device != input_ids.device:
+            raise SpecError("packed attention tensors must share the input_ids device")
+        valid = binary_mask(
+            attention_mask,
+            field="packed token-validity attention_mask",
+            shape=input_ids.shape,
+        )
+        if valid.device != input_ids.device:
+            raise SpecError("packed attention tensors must share the input_ids device")
         expected = (
             valid[:, None, :, None]
             & valid[:, None, None, :]

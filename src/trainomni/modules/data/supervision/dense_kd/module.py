@@ -11,6 +11,7 @@ from trainomni.contracts.cache import (
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
+from trainomni.modules.data._tensors import binary_mask
 
 from .config import DenseKDSupervisionConfig
 
@@ -29,9 +30,12 @@ class DenseKDSupervision:
         labels = input_ids.detach().clone()
         loss_mask = sample.supervision.get(self.config.loss_mask_field)
         if loss_mask is not None:
-            if not isinstance(loss_mask, torch.Tensor) or loss_mask.shape != labels.shape:
-                raise SpecError("dense KD loss_mask must align with input_ids")
-            labels = labels.masked_fill(~loss_mask.bool(), self.config.ignore_index)
+            loss_mask = binary_mask(
+                loss_mask,
+                field="dense KD loss_mask",
+                shape=labels.shape,
+            )
+            labels = labels.masked_fill(~loss_mask, self.config.ignore_index)
         supervision = dict(sample.supervision)
         current_field = current_model_inputs_field(self.config.teacher_logits_field)
         if current_field in supervision:

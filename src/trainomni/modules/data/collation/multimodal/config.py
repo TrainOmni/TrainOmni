@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
+from trainomni.modules.data._validation import require_int, require_number
+
 _MODES = {"auto", "stack", "pad", "concat", "list"}
 
 
@@ -21,10 +23,16 @@ class MultimodalCollatorConfig:
     )
 
     def __post_init__(self) -> None:
+        require_int(self.pad_token_id, field="pad_token_id")
+        require_int(self.label_pad_id, field="label_pad_id")
         if self.padding_side not in {"left", "right"}:
             raise ValueError("padding_side must be left or right")
-        if self.pad_to_multiple_of is not None and self.pad_to_multiple_of <= 0:
-            raise ValueError("pad_to_multiple_of must be positive")
+        if self.pad_to_multiple_of is not None:
+            require_int(
+                self.pad_to_multiple_of,
+                field="pad_to_multiple_of",
+                minimum=1,
+            )
         if not isinstance(self.field_modes, Mapping):
             raise TypeError("field_modes must be a mapping")
         if not isinstance(self.field_pad_values, Mapping):
@@ -42,10 +50,11 @@ class MultimodalCollatorConfig:
         for path, value in self.field_pad_values.items():
             if not isinstance(path, str) or not path.strip():
                 raise ValueError("field_pad_values keys must be non-empty field paths")
-            if not isinstance(value, int | float):
-                raise TypeError(f"field_pad_values.{path} must be numeric")
+            require_number(value, field=f"field_pad_values.{path}")
             pad_values[path] = value
-        object.__setattr__(self, "field_modes", MappingProxyType(dict(sorted(modes.items()))))
+        object.__setattr__(
+            self, "field_modes", MappingProxyType(dict(sorted(modes.items())))
+        )
         object.__setattr__(
             self,
             "field_pad_values",

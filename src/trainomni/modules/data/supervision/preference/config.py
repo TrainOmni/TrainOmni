@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from trainomni.modules.data._validation import require_string
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PreferenceSupervisionConfig:
@@ -21,5 +23,7 @@ class PreferenceSupervisionConfig:
             self.chosen_reference_logps_field,
             self.rejected_reference_logps_field,
         )
-        if any(not field for field in fields) or len(set(fields)) != len(fields):
+        for index, field in enumerate(fields):
+            require_string(field, field=f"preference field[{index}]")
+        if len(set(fields)) != len(fields):
             raise ValueError("preference field names must be non-empty and unique")

@@ -35,10 +35,23 @@ class MSSwiftAdapter:
     def __init__(self, config: MSSwiftAdapterConfig) -> None:
         self.config = config
 
+    def _sample_id(self, record: DataRecord) -> str:
+        column = self.config.sample_id_column
+        if column not in record.fields or record.fields[column] is None:
+            return record.sample_id
+        value = record.fields[column]
+        if not isinstance(value, str) or not value.strip():
+            raise SpecError(f"ms-swift sample id column {column!r} must be a string")
+        return value.strip()
+
     def _image_value(self, value: Any, *, location: str) -> Any:
         if isinstance(value, Mapping):
             raw_bytes = value.get("bytes")
             path = value.get("path")
+            if raw_bytes is not None and path is not None:
+                raise SpecError(
+                    f"{location} image mapping cannot contain both 'bytes' and 'path'"
+                )
             if raw_bytes is not None:
                 value = raw_bytes
             elif path is not None:
@@ -67,6 +80,10 @@ class MSSwiftAdapter:
         if isinstance(value, Mapping):
             raw_bytes = value.get("bytes")
             path = value.get("path")
+            if raw_bytes is not None and path is not None:
+                raise SpecError(
+                    f"{location} {kind} mapping cannot contain both 'bytes' and 'path'"
+                )
             if raw_bytes is not None:
                 return bytes(raw_bytes)
             if path is not None:
@@ -458,7 +475,7 @@ class MSSwiftAdapter:
                 for value in queues[kind]
             ]
             return OmniSample(
-                sample_id=str(fields.get(self.config.sample_id_column) or record.sample_id),
+                sample_id=self._sample_id(record),
                 content=tuple(prefix + blocks),
                 metadata=self._metadata(record),
             )
@@ -468,7 +485,7 @@ class MSSwiftAdapter:
             for role, blocks, metadata in parsed
         )
         return OmniSample(
-            sample_id=str(fields.get(self.config.sample_id_column) or record.sample_id),
+            sample_id=self._sample_id(record),
             content=(),
             messages=messages,
             metadata=self._metadata(record),
@@ -482,6 +499,8 @@ class MSSwiftAdapter:
         for column in self.config.metadata_columns:
             if column not in record.fields:
                 raise SpecError(f"metadata column is missing: {column}")
+            if column in metadata:
+                raise SpecError(f"metadata column would overwrite reserved key: {column}")
             metadata[column] = record.fields[column]
         common = {
             name: record.fields[name]

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from trainomni.core.context import BuildContext
-from trainomni.core.errors import SpecError
+from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.core.module import ModuleRef
 from trainomni.modules.data.sources.jsonl.module import descriptor
 
@@ -26,12 +26,16 @@ def write_jsonl(path: Path) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def build_source(task_root: Path, digest: str):
+def build_source(task_root: Path, digest: str, *, repeat: bool = True):
     module = descriptor()
     reference = ModuleRef.from_mapping(
         {
             "module": "data_source:trainomni/jsonl@1",
-            "config": {"path": "samples.jsonl", "sha256": digest},
+            "config": {
+                "path": "samples.jsonl",
+                "sha256": digest,
+                "repeat": repeat,
+            },
         },
         field_name="data.source",
     )
@@ -91,3 +95,38 @@ def test_jsonl_source_parses_role_aware_multimodal_messages(tmp_path: Path) -> N
         "image",
         "text",
     )
+
+
+def test_jsonl_restore_rejects_unreachable_cursors(tmp_path: Path) -> None:
+    digest = write_jsonl(tmp_path / "samples.jsonl")
+    source = build_source(tmp_path, digest, repeat=False)
+    base = source.state_dict()
+
+    for changes, match in (
+        ({"offset": 1, "line_number": 0}, "line boundary"),
+        ({"line_number": 999}, "line number"),
+        ({"epoch": 1}, "epoch must remain zero"),
+        ({"offset": True}, "must be integers"),
+    ):
+        state = {**base, **changes}
+        with pytest.raises(CheckpointError, match=match):
+            build_source(tmp_path, digest, repeat=False).load_state_dict(state)
+
+
+def test_jsonl_restore_accepts_finite_eof_and_repeat_rollover(tmp_path: Path) -> None:
+    digest = write_jsonl(tmp_path / "samples.jsonl")
+    finite = build_source(tmp_path, digest, repeat=False)
+    assert [finite.next_sample().sample_id for _ in range(2)] == ["a", "b"]
+    eof = finite.state_dict()
+    restored_finite = build_source(tmp_path, digest, repeat=False)
+    restored_finite.load_state_dict(eof)
+    with pytest.raises(StopIteration):
+        restored_finite.next_sample()
+
+    repeating = build_source(tmp_path, digest)
+    assert [repeating.next_sample().sample_id for _ in range(3)] == ["a", "b", "a"]
+    rollover = repeating.state_dict()
+    assert rollover["epoch"] == 1
+    restored_repeat = build_source(tmp_path, digest)
+    restored_repeat.load_state_dict(rollover)
+    assert restored_repeat.next_sample().sample_id == "b"

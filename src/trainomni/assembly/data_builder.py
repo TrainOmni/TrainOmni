@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
+from trainomni.contracts.batch import SupervisedExample
 from trainomni.core.context import BuildContext
 from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.core.module import ModuleKind
@@ -163,11 +164,20 @@ class DataPipelineStream:
                 "data pipeline checkpoint state is incomplete or has unknown fields"
             )
         ready = state["ready"]
-        if not isinstance(ready, (tuple, list)):
-            raise CheckpointError("data pipeline ready buffer must be a sequence")
+        if not isinstance(ready, (tuple, list)) or any(
+            not isinstance(item, SupervisedExample) for item in ready
+        ):
+            raise CheckpointError(
+                "data pipeline ready buffer must contain supervised examples"
+            )
         exhausted = state["exhausted"]
-        dropped_examples = int(state["dropped_examples"])
-        if not isinstance(exhausted, bool) or dropped_examples < 0:
+        dropped_examples = state["dropped_examples"]
+        if (
+            not isinstance(exhausted, bool)
+            or not isinstance(dropped_examples, int)
+            or isinstance(dropped_examples, bool)
+            or dropped_examples < 0
+        ):
             raise CheckpointError("data pipeline finite-source state is invalid")
         transform_states = state["transforms"]
         if not isinstance(transform_states, (tuple, list)) or len(

@@ -12,6 +12,7 @@ from trainomni.contracts.batch import SupervisedExample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
+from trainomni.modules.data._tensors import binary_mask
 
 from .config import SequencePackerConfig
 
@@ -26,9 +27,13 @@ class SequencePacker:
         input_ids = sample.model_inputs.get(self.config.input_ids_field)
         if not isinstance(input_ids, torch.Tensor) or input_ids.ndim != 1:
             raise SpecError("sequence packing requires one-dimensional input_ids")
+        if input_ids.dtype is torch.bool or input_ids.is_floating_point() or input_ids.is_complex():
+            raise SpecError("sequence packing requires integer input_ids")
         labels = sample.labels
         if not isinstance(labels, torch.Tensor) or labels.shape != input_ids.shape:
             raise SpecError("sequence packing requires labels aligned with input_ids")
+        if labels.dtype != input_ids.dtype or labels.device != input_ids.device:
+            raise SpecError("sequence packing requires labels to match input_ids dtype/device")
         length = int(input_ids.shape[0])
         if length <= 0 or length > self.config.max_length:
             raise SpecError(
@@ -36,9 +41,12 @@ class SequencePacker:
             )
         attention = sample.model_inputs.get(self.config.attention_mask_field)
         if attention is not None:
-            if not isinstance(attention, torch.Tensor) or attention.shape != input_ids.shape:
-                raise SpecError("pre-pack attention_mask must align with input_ids")
-            if not bool(attention.bool().all().item()):
+            attention = binary_mask(
+                attention,
+                field="pre-pack attention_mask",
+                shape=input_ids.shape,
+            )
+            if not bool(attention.all().item()):
                 raise SpecError("pre-pack examples must not contain padded attention tokens")
         return length
 
@@ -102,6 +110,7 @@ class SequencePacker:
         input_values = [
             sample.model_inputs[self.config.input_ids_field] for sample in samples
         ]
+        self._validate_tensor_family(input_values, field=self.config.input_ids_field)
         packed_input_ids = self._pad_first_axis(
             torch.cat(tuple(input_values), dim=0),
             target=max_length,
@@ -168,7 +177,9 @@ class SequencePacker:
             if not all(
                 isinstance(value, torch.Tensor)
                 and value.ndim == 1
+                and value.dtype is not torch.bool
                 and not value.is_floating_point()
+                and not value.is_complex()
                 for value in values
             ):
                 raise SpecError(
@@ -230,7 +241,9 @@ class SequencePacker:
             raise SpecError("cannot emit an empty sequence pack")
         samples = tuple(self._buffer)
         lengths = tuple(self._length(sample) for sample in samples)
-        labels = torch.cat(tuple(sample.labels for sample in samples), dim=0)
+        label_values = tuple(sample.labels for sample in samples)
+        self._validate_tensor_family(label_values, field="labels")
+        labels = torch.cat(label_values, dim=0)
         offset = 0
         for index, length in enumerate(lengths):
             if index > 0:
@@ -280,7 +293,9 @@ class SequencePacker:
         if set(state) != {"buffer", "tokens"}:
             raise CheckpointError("invalid sequence-packer state keys")
         buffer = state["buffer"]
-        tokens = int(state["tokens"])
+        tokens = state["tokens"]
+        if not isinstance(tokens, int) or isinstance(tokens, bool):
+            raise CheckpointError("sequence-packer token cursor must be an integer")
         if not isinstance(buffer, (tuple, list)) or any(
             not isinstance(sample, SupervisedExample) for sample in buffer
         ):
@@ -291,6 +306,9 @@ class SequencePacker:
             raise CheckpointError(f"sequence-packer buffer is incompatible: {exc}") from exc
         if tokens != actual or not 0 <= tokens < self.config.max_length:
             raise CheckpointError("sequence-packer token cursor is inconsistent")
+        sample_limit = self.config.max_samples_per_pack
+        if sample_limit is not None and len(buffer) >= sample_limit:
+            raise CheckpointError("sequence-packer buffer exceeds its sample limit")
         self._buffer = list(buffer)
         self._tokens = tokens
 

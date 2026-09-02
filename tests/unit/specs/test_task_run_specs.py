@@ -69,6 +69,51 @@ def test_task_and_run_have_separate_stable_identities(tmp_path: Path) -> None:
     assert run.per_device_batch_size == 2
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("seed", 1.9),
+        ("seed", True),
+        ("max_steps", 2.9),
+        ("max_steps", True),
+        ("per_device_batch_size", 3.9),
+        ("per_device_batch_size", True),
+        ("gradient_accumulation_steps", 4.9),
+        ("gradient_accumulation_steps", True),
+    ],
+)
+def test_run_cardinality_fields_do_not_coerce(field, value, tmp_path: Path) -> None:
+    payload = run_payload(tmp_path / "checkpoints")
+    payload[field] = value
+    with pytest.raises(SpecError, match=field):
+        RunSpec.from_mapping(payload)
+
+
+@pytest.mark.parametrize("value", [2.9, True, "2"])
+def test_checkpoint_step_cardinality_does_not_coerce(value, tmp_path: Path) -> None:
+    payload = run_payload(tmp_path / "checkpoints")
+    payload["checkpoint"]["every_steps"] = value
+    with pytest.raises(SpecError, match="checkpoint.every_steps"):
+        RunSpec.from_mapping(payload)
+
+
+def test_data_source_names_do_not_coerce_or_collide() -> None:
+    payload = task_payload()
+    payload["data"]["sources"] = {
+        1: ref("data_source", "one"),
+        "1": ref("data_source", "string-one"),
+    }
+    with pytest.raises(SpecError, match="non-empty strings"):
+        TaskSpec.from_mapping(payload)
+
+    payload["data"]["sources"] = {
+        "source": ref("data_source", "one"),
+        " source ": ref("data_source", "two"),
+    }
+    with pytest.raises(SpecError, match="unique after normalization"):
+        TaskSpec.from_mapping(payload)
+
+
 def test_run_identity_excludes_only_physical_checkpoint_directory(
     tmp_path: Path,
 ) -> None:

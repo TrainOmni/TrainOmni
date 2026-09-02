@@ -65,6 +65,21 @@ def test_mixture_identity_and_state_corruption_fail_closed() -> None:
     with pytest.raises(CheckpointError, match="do not sum"):
         build_mixture().load_state_dict(corrupted)
 
+    reordered = deepcopy(state)
+    reordered["active_sources"] = ("beta", "alpha")
+    with pytest.raises(CheckpointError, match="configuration order"):
+        build_mixture().load_state_dict(reordered)
+
+
+def test_finite_memory_source_rejects_unreachable_cursor() -> None:
+    source = memory_source("one", repeat=False)
+    source.load_state_dict({"cursor": 1})
+    with pytest.raises(StopIteration):
+        source.next_sample()
+
+    with pytest.raises(SpecError, match="finite memory source cursor"):
+        memory_source("one", repeat=False).load_state_dict({"cursor": 9})
+
 
 def test_mixture_requires_exact_named_source_set() -> None:
     with pytest.raises(SpecError, match="names differ"):

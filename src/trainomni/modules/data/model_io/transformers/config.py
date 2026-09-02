@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 
 from trainomni.core.assets import validate_asset_fields
+from trainomni.modules.data._validation import (
+    normalize_string_sequence,
+    require_bool,
+    require_string,
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -22,21 +27,40 @@ class TransformersModelIOConfig:
     )
     loss_mask_field: str = "loss_mask"
     supervision_metadata_key: str | None = None
+    batch_axis_fields: tuple[str, ...] = (
+        "input_ids", "attention_mask", "token_type_ids", "mm_token_type_ids",
+    )
 
     def __post_init__(self) -> None:
-        if not self.processor_name_or_path:
-            raise ValueError("processor_name_or_path must not be empty")
+        require_string(
+            self.processor_name_or_path,
+            field="processor_name_or_path",
+        )
+        require_bool(self.trust_remote_code, field="trust_remote_code")
+        require_bool(self.local_files_only, field="local_files_only")
+        require_string(self.text_separator, field="text_separator", allow_empty=True)
+        require_bool(self.add_generation_prompt, field="add_generation_prompt")
+        require_bool(self.require_assistant_mask, field="require_assistant_mask")
         validate_asset_fields(
             revision=self.revision,
             asset_manifest_sha256=self.asset_manifest_sha256,
         )
         if self.conversation_mode not in {"auto", "required", "disabled"}:
             raise ValueError("conversation_mode must be auto, required, or disabled")
-        if not self.assistant_mask_fields or any(
-            not field for field in self.assistant_mask_fields
-        ):
-            raise ValueError("assistant_mask_fields must contain non-empty names")
-        if not self.loss_mask_field:
-            raise ValueError("loss_mask_field must not be empty")
-        if self.supervision_metadata_key is not None and not self.supervision_metadata_key:
-            raise ValueError("supervision_metadata_key must be null or non-empty")
+        assistant_mask_fields = normalize_string_sequence(
+            self.assistant_mask_fields,
+            field="assistant_mask_fields",
+            allow_empty_sequence=False,
+        )
+        require_string(self.loss_mask_field, field="loss_mask_field")
+        if self.supervision_metadata_key is not None:
+            require_string(
+                self.supervision_metadata_key,
+                field="supervision_metadata_key",
+            )
+        object.__setattr__(self, "assistant_mask_fields", assistant_mask_fields)
+        object.__setattr__(
+            self,
+            "batch_axis_fields",
+            normalize_string_sequence(self.batch_axis_fields, field="batch_axis_fields"),
+        )

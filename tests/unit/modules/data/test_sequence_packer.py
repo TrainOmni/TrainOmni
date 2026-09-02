@@ -122,3 +122,55 @@ def test_sequence_packer_rejects_unknown_or_pre_padded_fields() -> None:
     )
     with pytest.raises(SpecError, match="must not contain padded"):
         SequencePacker(config()).add(padded)
+
+
+def test_sequence_packer_rejects_non_binary_masks_and_dtype_promotion() -> None:
+    invalid_mask = example("mask", [1, 2], modal_position=0)
+    invalid_mask = SupervisedExample(
+        invalid_mask.sample_id,
+        {
+            **invalid_mask.model_inputs,
+            "attention_mask": torch.tensor([1.0, 2.0]),
+        },
+        invalid_mask.labels,
+        invalid_mask.supervision,
+    )
+    with pytest.raises(SpecError, match="binary 0/1"):
+        SequencePacker(config()).add(invalid_mask)
+
+    floating_ids = SupervisedExample(
+        "float",
+        {"input_ids": torch.tensor([1.0, 2.0])},
+        torch.tensor([1.0, 2.0]),
+    )
+    with pytest.raises(SpecError, match="integer input_ids"):
+        SequencePacker(SequencePackerConfig(max_length=4, pad_token_id=0)).add(
+            floating_ids
+        )
+
+    mismatched_labels = SupervisedExample(
+        "labels",
+        {"input_ids": torch.tensor([1, 2], dtype=torch.int64)},
+        torch.tensor([1, 2], dtype=torch.int32),
+    )
+    with pytest.raises(SpecError, match="match input_ids dtype/device"):
+        SequencePacker(SequencePackerConfig(max_length=4, pad_token_id=0)).add(
+            mismatched_labels
+        )
+
+
+def test_sequence_packer_restore_rejects_already_emittable_buffer() -> None:
+    limited = SequencePacker(
+        SequencePackerConfig(
+            max_length=8,
+            pad_token_id=0,
+            max_samples_per_pack=1,
+        )
+    )
+    sample = SupervisedExample(
+        "one",
+        {"input_ids": torch.tensor([1, 2])},
+        torch.tensor([1, 2]),
+    )
+    with pytest.raises(CheckpointError, match="exceeds its sample limit"):
+        limited.load_state_dict({"buffer": (sample,), "tokens": 2})

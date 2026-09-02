@@ -229,6 +229,43 @@ def test_parquet_rank_and_worker_partitions_are_complete_and_disjoint(
             assert left.isdisjoint(right)
 
 
+def test_repeating_columnar_shards_require_equal_rows_and_resume(tmp_path: Path) -> None:
+    uneven_path = tmp_path / "uneven.parquet"
+    parquet.write_table(pa.Table.from_pylist(rows(5)), uneven_path, row_group_size=4)
+    with pytest.raises(SpecError, match="equal assigned row totals.*4, 1"):
+        build_parquet(uneven_path, repeat=True).shard(rank=0, world_size=2)
+
+    balanced_path = tmp_path / "balanced.parquet"
+    parquet.write_table(pa.Table.from_pylist(rows(4)), balanced_path, row_group_size=2)
+    rank0 = build_parquet(balanced_path, repeat=True)
+    rank1 = build_parquet(balanced_path, repeat=True)
+    rank0.shard(rank=0, world_size=2)
+    rank1.shard(rank=1, world_size=2)
+    rank0_ids = [rank0.next_record().sample_id for _ in range(4)]
+    rank1_ids = [rank1.next_record().sample_id for _ in range(4)]
+    assert len(set(rank0_ids)) == len(set(rank1_ids)) == 2
+
+    state = rank1.state_dict()
+    expected = [rank1.next_record().sample_id for _ in range(4)]
+    restored = build_parquet(balanced_path, repeat=True)
+    restored.shard(rank=1, world_size=2)
+    restored.load_state_dict(state)
+    assert [restored.next_record().sample_id for _ in range(4)] == expected
+
+
+def test_repeating_columnar_rejects_intergps_shaped_680_600_split(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "intergps-layout.parquet"
+    parquet.write_table(
+        pa.Table.from_pylist([{"id": index} for index in range(1280)]),
+        path,
+        row_group_size=100,
+    )
+    with pytest.raises(SpecError, match=r"\(680, 600\)"):
+        build_parquet(path, repeat=True).shard(rank=0, world_size=2)
+
+
 def test_columnar_resume_uses_semantic_manifest_not_physical_root(
     tmp_path: Path,
 ) -> None:
@@ -268,6 +305,18 @@ def test_columnar_resume_uses_semantic_manifest_not_physical_root(
     )
     with pytest.raises(CheckpointError, match="dataset identity changed"):
         changed_snapshot.load_state_dict(state)
+
+
+def test_columnar_restore_rejects_unreachable_emitted_count(tmp_path: Path) -> None:
+    path = tmp_path / "samples.parquet"
+    parquet.write_table(pa.Table.from_pylist(rows(4)), path, row_group_size=2)
+
+    source = build_parquet(path, repeat=True)
+    state = dict(source.state_dict())
+    state["emitted"] = 99
+
+    with pytest.raises(CheckpointError, match="emitted count is inconsistent"):
+        build_parquet(path, repeat=True).load_state_dict(state)
 
 
 def test_parquet_adapter_builds_through_the_complete_data_pipeline(

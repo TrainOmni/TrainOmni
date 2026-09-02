@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from trainomni.modules.data._validation import require_string
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TensorCacheConfig:
@@ -10,8 +12,9 @@ class TensorCacheConfig:
     metadata_key: str = "tensor_cache"
 
     def __post_init__(self) -> None:
-        if not self.index_path or not self.metadata_key:
-            raise ValueError("index_path and metadata_key must not be empty")
+        require_string(self.index_path, field="index_path")
+        require_string(self.index_sha256, field="index_sha256")
+        require_string(self.metadata_key, field="metadata_key")
         if (
             len(self.index_sha256) != 64
             or any(character not in "0123456789abcdef" for character in self.index_sha256)

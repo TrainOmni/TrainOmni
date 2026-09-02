@@ -11,6 +11,7 @@ from trainomni.contracts.batch import EncodedSample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
+from trainomni.modules.data._tensors import binary_mask
 
 from .config import TransformersModelIOConfig
 
@@ -66,7 +67,16 @@ class TransformersModelIO:
                 assistant_mask = encoded.pop(field)
         model_inputs = {}
         for key, value in encoded.items():
-            if isinstance(value, torch.Tensor) and value.shape[:1] == (1,):
+            if key in self.config.batch_axis_fields:
+                if (
+                    not isinstance(value, torch.Tensor)
+                    or value.ndim < 2
+                    or value.shape[0] != 1
+                ):
+                    raise SpecError(
+                        f"processor field {key!r} requires an explicit singleton "
+                        "batch axis with shape [1, ...]"
+                    )
                 value = value.squeeze(0)
             model_inputs[str(key)] = value
         supervision = {}
@@ -89,22 +99,23 @@ class TransformersModelIO:
                 supervision[name] = value
         if assistant_mask is not None:
             if not isinstance(assistant_mask, torch.Tensor):
-                try:
-                    assistant_mask = torch.as_tensor(assistant_mask)
-                except Exception as exc:
-                    raise SpecError("assistant mask cannot be converted to a tensor") from exc
-            if assistant_mask.shape[:1] == (1,):
+                raise SpecError("assistant mask must be a tensor")
+            if assistant_mask.ndim == 2 and assistant_mask.shape[0] == 1:
                 assistant_mask = assistant_mask.squeeze(0)
             input_ids = model_inputs.get("input_ids")
             if (
                 not isinstance(input_ids, torch.Tensor)
                 or input_ids.ndim != 1
-                or assistant_mask.shape != input_ids.shape
             ):
                 raise SpecError("assistant mask must align exactly with one-dimensional input_ids")
+            assistant_mask = binary_mask(
+                assistant_mask,
+                field="assistant mask",
+                shape=input_ids.shape,
+            )
             if self.config.loss_mask_field in supervision:
                 raise SpecError("assistant loss mask collides with cached supervision")
-            supervision[self.config.loss_mask_field] = assistant_mask.bool()
+            supervision[self.config.loss_mask_field] = assistant_mask
         elif conversation and self.config.require_assistant_mask:
             raise SpecError(
                 "processor chat template returned no assistant token mask; "

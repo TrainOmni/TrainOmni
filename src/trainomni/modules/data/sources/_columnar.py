@@ -12,6 +12,12 @@ from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.specs.digest import identity_digest
 
 
+def _state_int(value: Any, *, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise CheckpointError(f"columnar {field} must be an integer")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class PhysicalFragment:
     path: Path
@@ -161,11 +167,25 @@ class ColumnarRecordSource:
             return
         partition = rank * num_workers + worker_id
         partitions = world_size * num_workers
-        self.assigned = balanced_fragment_assignment(
-            self.fragments,
-            rank=partition,
-            world_size=partitions,
+        assignments = tuple(
+            balanced_fragment_assignment(
+                self.fragments,
+                rank=candidate,
+                world_size=partitions,
+            )
+            for candidate in range(partitions)
         )
+        assigned_rows = tuple(
+            sum(fragment.rows for fragment in assignment)
+            for assignment in assignments
+        )
+        if self.repeat and len(set(assigned_rows)) != 1:
+            raise SpecError(
+                "repeating columnar sharding requires equal assigned row totals; "
+                f"got {assigned_rows}. Re-shard the dataset or use an explicit "
+                "equal-step sampler."
+            )
+        self.assigned = assignments[partition]
         self.rank = rank
         self.world_size = world_size
         self.worker_id = worker_id
@@ -257,25 +277,31 @@ class ColumnarRecordSource:
             raise CheckpointError("invalid columnar source state keys")
         if state["identity"] != self.identity:
             raise CheckpointError("columnar dataset identity changed")
-        if (
-            int(state["rank"]),
-            int(state["world_size"]),
-            int(state["worker_id"]),
-            int(state["num_workers"]),
-        ) != (
+        topology = tuple(
+            _state_int(state[field], field=field)
+            for field in ("rank", "world_size", "worker_id", "num_workers")
+        )
+        if topology != (
             self.rank,
             self.world_size,
             self.worker_id,
             self.num_workers,
         ):
             raise CheckpointError("columnar source topology changed")
-        assigned = tuple(str(item) for item in state["assigned_fragments"])
+        raw_assigned = state["assigned_fragments"]
+        if not isinstance(raw_assigned, (tuple, list)) or any(
+            not isinstance(item, str) for item in raw_assigned
+        ):
+            raise CheckpointError("columnar physical fragment assignment is invalid")
+        assigned = tuple(raw_assigned)
         if assigned != tuple(item.fragment_id for item in self.assigned):
             raise CheckpointError("columnar physical fragment assignment changed")
-        epoch = int(state["epoch"])
-        fragment_cursor = int(state["fragment_cursor"])
-        row_cursor = int(state["row_cursor"])
-        emitted = int(state["emitted"])
+        epoch = _state_int(state["epoch"], field="epoch")
+        fragment_cursor = _state_int(
+            state["fragment_cursor"], field="fragment_cursor"
+        )
+        row_cursor = _state_int(state["row_cursor"], field="row_cursor")
+        emitted = _state_int(state["emitted"], field="emitted")
         if min(epoch, fragment_cursor, row_cursor, emitted) < 0:
             raise CheckpointError("columnar cursor values must be non-negative")
         if fragment_cursor > len(self.assigned):
@@ -287,6 +313,17 @@ class ColumnarRecordSource:
             and row_cursor > self.assigned[fragment_cursor].rows
         ):
             raise CheckpointError("columnar row cursor is out of range")
+        if not self.repeat and epoch != 0:
+            raise CheckpointError("finite columnar source epoch must remain zero")
+        rows_per_epoch = sum(fragment.rows for fragment in self.assigned)
+        rows_before_fragment = sum(
+            fragment.rows for fragment in self.assigned[:fragment_cursor]
+        )
+        expected_emitted = (
+            epoch * rows_per_epoch + rows_before_fragment + row_cursor
+        )
+        if emitted != expected_emitted:
+            raise CheckpointError("columnar emitted count is inconsistent with cursor")
         self.epoch = epoch
         self.fragment_cursor = fragment_cursor
         self.row_cursor = row_cursor

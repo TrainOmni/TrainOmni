@@ -51,9 +51,14 @@ class RankShardedSource:
         expected = {"rank", "world_size", "local_samples", "source"}
         if set(state) != expected:
             raise CheckpointError("distributed source state keys are invalid")
-        if int(state["rank"]) != self.rank or int(state["world_size"]) != self.world_size:
+        if any(
+            not isinstance(state[field], int) or isinstance(state[field], bool)
+            for field in ("rank", "world_size", "local_samples")
+        ):
+            raise CheckpointError("distributed source counters must be integers")
+        if state["rank"] != self.rank or state["world_size"] != self.world_size:
             raise CheckpointError("distributed source topology changed")
-        local_samples = int(state["local_samples"])
+        local_samples = state["local_samples"]
         if local_samples < 0:
             raise CheckpointError("distributed source local sample count is invalid")
         self.source.load_state_dict(state["source"])

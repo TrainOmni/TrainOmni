@@ -13,6 +13,12 @@ from trainomni.core.errors import SpecError
 from .digest import identity_digest
 
 
+def _strict_int(value: Any, *, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise SpecError(f"{field} must be an integer")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class OptimizerGroupOverride:
     name: str
@@ -140,7 +146,9 @@ class SchedulerSpec:
         if unknown:
             raise SpecError(f"scheduler contains unknown keys: {', '.join(unknown)}")
         name = str(value.get("name", "constant"))
-        warmup_steps = int(value.get("warmup_steps", 0))
+        warmup_steps = _strict_int(
+            value.get("warmup_steps", 0), field="scheduler.warmup_steps"
+        )
         min_lr_ratio = float(value.get("min_lr_ratio", 0.0))
         if name not in {"constant", "linear", "cosine"}:
             raise SpecError("scheduler.name must be constant, linear, or cosine")
@@ -206,8 +214,13 @@ class UpdateEvidenceSpec:
         enabled = value.get("enabled", False)
         if not isinstance(enabled, bool):
             raise SpecError("update_evidence.enabled must be a boolean")
-        every_steps = int(value.get("every_steps", 1))
-        sample_elements = int(value.get("sample_elements_per_group", 2048))
+        every_steps = _strict_int(
+            value.get("every_steps", 1), field="update_evidence.every_steps"
+        )
+        sample_elements = _strict_int(
+            value.get("sample_elements_per_group", 2048),
+            field="update_evidence.sample_elements_per_group",
+        )
         raw_groups = value.get("required_groups", ())
         if not isinstance(raw_groups, (tuple, list)) or any(
             not isinstance(group, str) or not group for group in raw_groups
@@ -350,7 +363,9 @@ class DeepSpeedSpec:
             raise SpecError(
                 f"execution.deepspeed contains unknown keys: {', '.join(unknown)}"
             )
-        zero_stage = int(value.get("zero_stage", 2))
+        zero_stage = _strict_int(
+            value.get("zero_stage", 2), field="execution.deepspeed.zero_stage"
+        )
         if zero_stage not in {0, 1, 2, 3}:
             raise SpecError("execution.deepspeed.zero_stage must be 0, 1, 2, or 3")
         offload_optimizer = value.get("offload_optimizer", "none")
@@ -421,10 +436,20 @@ class ExecutionSpec:
                 "execution.process_group_backend must be auto, gloo, nccl, or hccl"
             )
         raw_world_size = value.get("expected_world_size")
-        expected_world_size = None if raw_world_size is None else int(raw_world_size)
+        expected_world_size = (
+            None
+            if raw_world_size is None
+            else _strict_int(
+                raw_world_size,
+                field="execution.expected_world_size",
+            )
+        )
         if expected_world_size is not None and expected_world_size <= 0:
             raise SpecError("execution.expected_world_size must be positive")
-        timeout_seconds = int(value.get("timeout_seconds", 1800))
+        timeout_seconds = _strict_int(
+            value.get("timeout_seconds", 1800),
+            field="execution.timeout_seconds",
+        )
         if timeout_seconds <= 0:
             raise SpecError("execution.timeout_seconds must be positive")
         raw_children = {
@@ -472,7 +497,9 @@ class CheckpointSpec:
         raw_directory = value.get("directory")
         if not isinstance(raw_directory, str) or not raw_directory:
             raise SpecError("checkpoint.directory must be a non-empty path string")
-        every_steps = int(value.get("every_steps", 1))
+        every_steps = _strict_int(
+            value.get("every_steps", 1), field="checkpoint.every_steps"
+        )
         enabled = value.get("enabled", True)
         if not isinstance(enabled, bool):
             raise SpecError("checkpoint.enabled must be a boolean")
@@ -528,20 +555,27 @@ class RunSpec:
         if unknown:
             raise SpecError(f"run contains unknown keys: {', '.join(unknown)}")
         version = value.get("schema_version")
+        _strict_int(version, field="run.schema_version")
         if version != 1:
             raise SpecError(f"unsupported run schema_version: {version!r}")
         name = value.get("name")
         if not isinstance(name, str) or not name.strip():
             raise SpecError("run.name must be a non-empty string")
-        seed = int(value.get("seed", 0))
+        seed = _strict_int(value.get("seed", 0), field="run.seed")
         if not 0 <= seed < 2**32:
             raise SpecError("run.seed must be in [0, 2**32)")
         deterministic = value.get("deterministic", False)
         if not isinstance(deterministic, bool):
             raise SpecError("run.deterministic must be a boolean")
-        max_steps = int(value.get("max_steps", 0))
-        batch_size = int(value.get("per_device_batch_size", 1))
-        accumulation = int(value.get("gradient_accumulation_steps", 1))
+        max_steps = _strict_int(value.get("max_steps", 0), field="run.max_steps")
+        batch_size = _strict_int(
+            value.get("per_device_batch_size", 1),
+            field="run.per_device_batch_size",
+        )
+        accumulation = _strict_int(
+            value.get("gradient_accumulation_steps", 1),
+            field="run.gradient_accumulation_steps",
+        )
         if max_steps <= 0:
             raise SpecError("run.max_steps must be positive")
         if batch_size <= 0:

@@ -8,6 +8,7 @@ from trainomni.contracts.batch import EncodedSample, SupervisedExample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
+from trainomni.modules.data._tensors import binary_mask
 
 from .config import CausalSupervisionConfig
 
@@ -23,9 +24,12 @@ class CausalSupervision:
         labels = input_ids.detach().clone()
         loss_mask = sample.supervision.get(self.config.loss_mask_field)
         if loss_mask is not None:
-            if not isinstance(loss_mask, torch.Tensor) or loss_mask.shape != labels.shape:
-                raise SpecError("loss_mask must be a tensor aligned with input_ids")
-            labels = labels.masked_fill(~loss_mask.bool(), self.config.ignore_index)
+            loss_mask = binary_mask(
+                loss_mask,
+                field="loss_mask",
+                shape=labels.shape,
+            )
+            labels = labels.masked_fill(~loss_mask, self.config.ignore_index)
         return SupervisedExample(
             sample_id=sample.sample_id,
             model_inputs=sample.model_inputs,

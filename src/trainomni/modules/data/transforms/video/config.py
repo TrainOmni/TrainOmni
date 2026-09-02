@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from trainomni.modules.data._validation import require_int
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class VideoTransformConfig:
@@ -11,8 +13,12 @@ class VideoTransformConfig:
     max_decoded_frames: int = 4096
 
     def __post_init__(self) -> None:
-        if self.frames <= 0:
-            raise ValueError("frames must be positive")
+        require_int(self.frames, field="frames", minimum=1)
+        require_int(
+            self.max_decoded_frames,
+            field="max_decoded_frames",
+            minimum=1,
+        )
         if self.sampling not in {"uniform", "head", "tail"}:
             raise ValueError("sampling must be uniform, head, or tail")
         if self.mode not in {"RGB", "RGBA", "L"}:

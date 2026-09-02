@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
+from ._identity import freeze_mapping, normalize_identity
+
 
 @dataclass(frozen=True, slots=True)
 class DataRecord:
@@ -24,9 +26,21 @@ class DataRecord:
     )
 
     def __post_init__(self) -> None:
-        if not self.sample_id:
-            raise ValueError("data record sample_id must not be empty")
-        if not self.source:
-            raise ValueError("data record source must not be empty")
-        object.__setattr__(self, "fields", MappingProxyType(dict(self.fields)))
-        object.__setattr__(self, "position", MappingProxyType(dict(self.position)))
+        object.__setattr__(
+            self,
+            "sample_id",
+            normalize_identity(self.sample_id, field="data record sample_id"),
+        )
+        object.__setattr__(
+            self,
+            "source",
+            normalize_identity(self.source, field="data record source"),
+        )
+        object.__setattr__(
+            self, "fields", freeze_mapping(self.fields, field="data record fields")
+        )
+        object.__setattr__(
+            self,
+            "position",
+            freeze_mapping(self.position, field="data record position"),
+        )

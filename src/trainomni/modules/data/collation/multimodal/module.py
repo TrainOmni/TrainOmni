@@ -60,6 +60,15 @@ class MultimodalCollator:
             self.config.field_modes.get(field.rsplit(".", 1)[-1], "auto"),
         )
 
+    @staticmethod
+    def _validate_tensor_family(values, *, field: str) -> None:
+        expected_dtype = values[0].dtype
+        expected_device = values[0].device
+        if any(value.dtype != expected_dtype for value in values[1:]):
+            raise SpecError(f"collator tensor dtypes differ for {field}")
+        if any(value.device != expected_device for value in values[1:]):
+            raise SpecError(f"collator tensor devices differ for {field}")
+
     def _pad_tensors(self, values, *, field: str):
         if any(value.ndim == 0 for value in values):
             raise SpecError(f"collator cannot pad scalar tensors for {field}")
@@ -103,6 +112,7 @@ class MultimodalCollator:
         if mode == "list":
             return tuple(values)
         if all(isinstance(value, torch.Tensor) for value in values):
+            self._validate_tensor_family(values, field=field)
             shapes = {tuple(value.shape) for value in values}
             if mode == "stack":
                 if len(shapes) != 1:

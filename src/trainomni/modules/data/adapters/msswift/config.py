@@ -2,6 +2,11 @@
 
 from dataclasses import dataclass
 
+from trainomni.modules.data._validation import (
+    normalize_string_sequence,
+    require_bool,
+)
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MSSwiftAdapterConfig:
@@ -36,12 +41,21 @@ class MSSwiftAdapterConfig:
         )
         if any(not isinstance(item, str) or not item for item in column_names):
             raise TypeError("ms-swift adapter column names must be non-empty strings")
-        if not isinstance(self.metadata_columns, (tuple, list)):
-            raise TypeError("metadata_columns must be a sequence")
-        if len(self.metadata_columns) != len(set(self.metadata_columns)):
-            raise ValueError("metadata_columns must be unique")
+        metadata_columns = normalize_string_sequence(
+            self.metadata_columns,
+            field="metadata_columns",
+        )
+        reserved = sorted(
+            column for column in metadata_columns if column.startswith("trainomni.")
+        )
+        if reserved:
+            raise ValueError(
+                "metadata_columns cannot use reserved trainomni.* names: "
+                + ", ".join(reserved)
+            )
+        require_bool(self.decode_image_bytes, field="decode_image_bytes")
         if self.media_without_placeholders not in {"prepend", "error"}:
             raise ValueError(
                 "media_without_placeholders must be 'prepend' or 'error'"
             )
-        object.__setattr__(self, "metadata_columns", tuple(self.metadata_columns))
+        object.__setattr__(self, "metadata_columns", metadata_columns)

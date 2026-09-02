@@ -49,17 +49,21 @@ def _parse_sample(value, *, line_number: int) -> OmniSample:
         raise SpecError(
             f"JSONL line {line_number} contains unknown keys: {', '.join(unknown)}"
         )
-    raw_content = value.get("content")
-    raw_messages = value.get("messages")
-    if bool(raw_content) == bool(raw_messages):
+    has_content = "content" in value
+    has_messages = "messages" in value
+    if has_content == has_messages:
         raise SpecError(
             f"JSONL line {line_number} requires exactly one of content or messages"
         )
+    raw_content = value["content"] if has_content else None
+    raw_messages = value["messages"] if has_messages else None
     blocks = ()
     messages = ()
-    if raw_content:
-        if not isinstance(raw_content, list):
-            raise SpecError(f"JSONL line {line_number}.content must be a list")
+    if has_content:
+        if not isinstance(raw_content, list) or not raw_content:
+            raise SpecError(
+                f"JSONL line {line_number}.content must be a non-empty list"
+            )
         blocks = tuple(
             _parse_block(
                 block,
@@ -102,7 +106,7 @@ def _parse_sample(value, *, line_number: int) -> OmniSample:
         messages = tuple(parsed_messages)
     try:
         return OmniSample(
-            sample_id=str(value.get("sample_id", "")),
+            sample_id=value.get("sample_id"),
             content=blocks,
             metadata=value.get("metadata", {}),
             messages=messages,
@@ -128,6 +132,27 @@ class JsonlSource:
         self.offset = 0
         self.line_number = 0
         self.epoch = 0
+
+    def _line_number_at_offset(self, offset: int) -> int:
+        if offset == 0:
+            return 0
+        size = self.path.stat().st_size
+        newline_count = 0
+        last = b""
+        remaining = offset
+        with self.path.open("rb") as stream:
+            while remaining:
+                chunk = stream.read(min(8 * 1024 * 1024, remaining))
+                if not chunk:
+                    raise CheckpointError("JSONL offset exceeds the file")
+                newline_count += chunk.count(b"\n")
+                last = chunk[-1:]
+                remaining -= len(chunk)
+        if last != b"\n":
+            if offset != size:
+                raise CheckpointError("JSONL offset is not at a line boundary")
+            newline_count += 1
+        return newline_count
 
     def next_sample(self) -> OmniSample:
         with self.path.open("rb") as stream:
@@ -165,11 +190,19 @@ class JsonlSource:
             raise CheckpointError("invalid JSONL source state keys")
         if state["file_sha256"] != self.file_sha256:
             raise CheckpointError("JSONL source identity changed")
-        offset = int(state["offset"])
-        line_number = int(state["line_number"])
-        epoch = int(state["epoch"])
+        values = (state["offset"], state["line_number"], state["epoch"])
+        if any(not isinstance(value, int) or isinstance(value, bool) for value in values):
+            raise CheckpointError("JSONL source cursor values must be integers")
+        offset, line_number, epoch = values
         if min(offset, line_number, epoch) < 0 or offset > self.path.stat().st_size:
             raise CheckpointError("invalid JSONL source cursor")
+        if not self.repeat and epoch != 0:
+            raise CheckpointError("finite JSONL source epoch must remain zero")
+        expected_line_number = self._line_number_at_offset(offset)
+        if line_number != expected_line_number:
+            raise CheckpointError("JSONL offset and line number are inconsistent")
+        if self.repeat and epoch > 0 and offset == 0:
+            raise CheckpointError("repeating JSONL rollover state is unreachable")
         self.offset = offset
         self.line_number = line_number
         self.epoch = epoch

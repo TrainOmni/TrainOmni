@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from numbers import Real
 from types import MappingProxyType
 
 
@@ -19,7 +20,15 @@ class MixtureSourceConfig:
             raise TypeError("mixture seed must be an integer")
         if not isinstance(self.namespace_sample_ids, bool):
             raise TypeError("namespace_sample_ids must be a boolean")
-        weights = {str(name): float(weight) for name, weight in self.weights.items()}
+        if not isinstance(self.weights, Mapping):
+            raise TypeError("mixture weights must be a mapping")
+        weights = {}
+        for name, weight in self.weights.items():
+            if not isinstance(name, str):
+                raise TypeError("mixture source names must be strings")
+            if not isinstance(weight, Real) or isinstance(weight, bool):
+                raise TypeError(f"mixture weight for {name!r} must be numeric")
+            weights[name] = float(weight)
         if not weights:
             raise ValueError("mixture requires at least one source weight")
         if any(not name or name.startswith("__") for name in weights):
