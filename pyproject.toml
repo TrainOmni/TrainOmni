@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "trainomni"
+name = "trainomni-hap"
 version = "0.1.1"
 description = "Module-oriented multimodal understanding training framework"
 readme = "README.md"
