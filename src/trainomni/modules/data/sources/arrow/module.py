@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
@@ -28,6 +30,37 @@ def _project(batch, columns):
 def _batch_rows(batch, *, batch_rows: int):
     for offset in range(0, batch.num_rows, batch_rows):
         yield from batch.slice(offset, batch_rows).to_pylist()
+
+
+@dataclass(frozen=True, slots=True)
+class _ArrowFragmentReader:
+    columns: tuple[str, ...]
+    batch_rows: int
+
+    def __call__(self, fragment):
+        arrow, ipc = _require_arrow()
+        source = arrow.memory_map(str(fragment.path), "r")
+        try:
+            if fragment.metadata["ipc_kind"] == "file":
+                reader = ipc.open_file(source)
+                batch = reader.get_batch(int(fragment.metadata["batch"]))
+                yield from _batch_rows(
+                    _project(batch, self.columns),
+                    batch_rows=self.batch_rows,
+                )
+            else:
+                reader = ipc.open_stream(source)
+                for batch in reader:
+                    yield from _batch_rows(
+                        _project(batch, self.columns),
+                        batch_rows=self.batch_rows,
+                    )
+        except Exception as exc:
+            raise SpecError(
+                f"failed reading Arrow IPC file {fragment.path}: {exc}"
+            ) from exc
+        finally:
+            source.close()
 
 
 def _factory(config: ArrowSourceConfig, context):
@@ -101,32 +134,13 @@ def _factory(config: ArrowSourceConfig, context):
     if not fragments:
         raise SpecError("Arrow dataset contains no non-empty physical fragments")
 
-    def iter_fragment(fragment):
-        source = arrow.memory_map(str(fragment.path), "r")
-        try:
-            if fragment.metadata["ipc_kind"] == "file":
-                reader = ipc.open_file(source)
-                batch = reader.get_batch(int(fragment.metadata["batch"]))
-                yield from _batch_rows(
-                    _project(batch, config.columns),
-                    batch_rows=config.batch_rows,
-                )
-            else:
-                reader = ipc.open_stream(source)
-                for batch in reader:
-                    yield from _batch_rows(
-                        _project(batch, config.columns),
-                        batch_rows=config.batch_rows,
-                    )
-        except Exception as exc:
-            raise SpecError(f"failed reading Arrow IPC file {fragment.path}: {exc}") from exc
-        finally:
-            source.close()
-
     return ColumnarRecordSource(
         dataset_id=config.dataset_id,
         fragments=fragments,
-        iter_fragment=iter_fragment,
+        iter_fragment=_ArrowFragmentReader(
+            columns=tuple(config.columns),
+            batch_rows=config.batch_rows,
+        ),
         repeat=config.repeat,
         format_name="arrow",
         dataset_manifest_sha256=config.dataset_manifest_sha256,

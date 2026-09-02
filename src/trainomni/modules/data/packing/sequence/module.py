@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
-from types import MappingProxyType
 
 import torch
 
+from trainomni.contracts._mapping import FrozenDict
 from trainomni.contracts.batch import SupervisedExample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import CheckpointError, SpecError
@@ -22,6 +22,21 @@ class SequencePacker:
         self.config = config
         self._buffer: list[SupervisedExample] = []
         self._tokens = 0
+
+    def _target_length(self, lengths: Sequence[int]) -> int:
+        return self.config.max_length
+
+    def _attention_inputs(self, lengths, input_ids) -> dict[str, torch.Tensor]:
+        width = self._target_length(lengths)
+        block = torch.zeros((1, width, width), dtype=torch.bool, device=input_ids.device)
+        offset = 0
+        for length in lengths:
+            stop = offset + length
+            block[:, offset:stop, offset:stop] = torch.ones(
+                (length, length), dtype=torch.bool, device=input_ids.device
+            ).tril()
+            offset = stop
+        return {self.config.block_attention_field: block}
 
     def _length(self, sample: SupervisedExample) -> int:
         input_ids = sample.model_inputs.get(self.config.input_ids_field)
@@ -106,7 +121,7 @@ class SequencePacker:
                 "sequence packer has no field policy for: " + ", ".join(unknown)
             )
 
-        max_length = self.config.max_length
+        max_length = self._target_length(lengths)
         input_values = [
             sample.model_inputs[self.config.input_ids_field] for sample in samples
         ]
@@ -121,11 +136,6 @@ class SequencePacker:
         attention_mask[:valid_tokens] = 1
         positions = packed_input_ids.new_zeros(max_length)
         segments = packed_input_ids.new_full((max_length,), -1)
-        block_attention = torch.zeros(
-            (1, max_length, max_length),
-            dtype=torch.bool,
-            device=packed_input_ids.device,
-        )
         offset = 0
         for segment, length in enumerate(lengths):
             stop = offset + length
@@ -135,18 +145,13 @@ class SequencePacker:
                 device=positions.device,
             )
             segments[offset:stop] = segment
-            block_attention[:, offset:stop, offset:stop] = torch.ones(
-                (length, length),
-                dtype=torch.bool,
-                device=block_attention.device,
-            ).tril()
             offset = stop
         output: dict[str, object] = {
             self.config.input_ids_field: packed_input_ids,
             self.config.attention_mask_field: attention_mask,
             self.config.position_ids_field: positions,
             self.config.segment_ids_field: segments,
-            self.config.block_attention_field: block_attention,
+            **self._attention_inputs(lengths, packed_input_ids),
         }
 
         for field in self.config.sequence_fields:
@@ -226,7 +231,7 @@ class SequencePacker:
                 )
             output[field] = self._pad_first_axis(
                 torch.cat(tuple(values), dim=0),
-                target=self.config.max_length,
+                target=self._target_length(lengths),
                 pad_value=0,
             )
         output["packed_lengths"] = torch.tensor(
@@ -234,7 +239,7 @@ class SequencePacker:
             dtype=torch.int64,
             device=samples[0].labels.device,
         )
-        return MappingProxyType(output)
+        return FrozenDict(output)
 
     def _emit(self) -> SupervisedExample:
         if not self._buffer:
@@ -251,7 +256,7 @@ class SequencePacker:
             offset += length
         labels = self._pad_first_axis(
             labels,
-            target=self.config.max_length,
+            target=self._target_length(lengths),
             pad_value=self.config.ignore_index,
         )
         digest = hashlib.sha256(
@@ -259,7 +264,7 @@ class SequencePacker:
         ).hexdigest()[:20]
         result = SupervisedExample(
             sample_id=f"pack:{digest}",
-            model_inputs=MappingProxyType(self._pack_model_inputs(samples, lengths)),
+            model_inputs=FrozenDict(self._pack_model_inputs(samples, lengths)),
             labels=labels,
             supervision=self._pack_supervision(samples, lengths),
         )

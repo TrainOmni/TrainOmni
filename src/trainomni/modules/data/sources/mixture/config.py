@@ -6,7 +6,8 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from numbers import Real
-from types import MappingProxyType
+
+from trainomni.contracts._mapping import FrozenDict
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -40,5 +41,5 @@ class MixtureSourceConfig:
         object.__setattr__(
             self,
             "weights",
-            MappingProxyType(dict(sorted(weights.items()))),
+            FrozenDict(dict(sorted(weights.items()))),
         )

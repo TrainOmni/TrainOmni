@@ -28,6 +28,9 @@ from trainomni.modules.data.collation.multimodal.module import (
 from trainomni.modules.data.packing.none.module import (
     descriptor as packer_descriptor,
 )
+from trainomni.modules.data.packing.sequence.module import (
+    descriptor as sequence_packer_descriptor,
+)
 from trainomni.modules.data.sources.arrow.module import (
     descriptor as arrow_descriptor,
 )
@@ -37,6 +40,8 @@ from trainomni.modules.data.sources.parquet.module import (
 from trainomni.modules.data.supervision.causal_lm.module import (
     descriptor as supervision_descriptor,
 )
+from trainomni.runtime.data_loader import build_stateful_batch_loader
+from trainomni.specs.run import DataLoaderSpec
 from trainomni.specs.task import DataPipelineSpec
 
 
@@ -364,6 +369,215 @@ def test_parquet_adapter_builds_through_the_complete_data_pipeline(
     assert batch.model_inputs["input_ids"].shape == (2, 3)
     assert batch.model_inputs["pixel_values"].shape == (2, 12, 3)
     assert batch.labels.shape == (2, 3)
+
+
+@pytest.mark.parametrize("format_name", ["parquet", "arrow"])
+def test_columnar_pipeline_runs_in_stateful_multiworker_loader(
+    tmp_path: Path,
+    format_name: str,
+) -> None:
+    table = pa.Table.from_pylist(rows(8))
+    path = tmp_path / f"samples.{format_name}"
+    if format_name == "parquet":
+        parquet.write_table(table, path, row_group_size=2)
+        source_descriptor = parquet_descriptor()
+    else:
+        with pa.OSFile(str(path), "wb") as sink, ipc.new_file(
+            sink, table.schema
+        ) as writer:
+            for batch in table.to_batches(max_chunksize=2):
+                writer.write_batch(batch)
+        source_descriptor = arrow_descriptor()
+    spec = DataPipelineSpec.from_mapping(
+        {
+            "source": {
+                "module": f"data_source:trainomni/{format_name}@1",
+                "config": {
+                    "dataset_id": f"{format_name}-workers",
+                    "paths": [str(path)],
+                    "batch_rows": 2,
+                    "repeat": False,
+                },
+            },
+            "adapter": {"module": "data_adapter:trainomni/msswift@1"},
+            "transforms": [],
+            "model_io": {"module": "model_io:test/columnar@1"},
+            "supervision": {"module": "supervision:trainomni/causal_lm@1"},
+            "packer": {"module": "packer:trainomni/none@1"},
+            "collator": {"module": "collator:trainomni/multimodal@1"},
+        }
+    )
+    resolver = ModuleResolver(
+        ModuleRegistry(
+            (
+                source_descriptor,
+                adapter_descriptor(),
+                model_io_descriptor(),
+                supervision_descriptor(),
+                packer_descriptor(),
+                collator_descriptor(),
+            )
+        )
+    )
+    pipeline = build_data_stream(spec, resolver, context=BuildContext("task"))
+    loader = build_stateful_batch_loader(
+        pipeline,
+        batch_size=2,
+        spec=DataLoaderSpec(
+            num_workers=2,
+            prefetch_factor=2,
+            persistent_workers=False,
+        ),
+    )
+
+    first_batch = loader.next_batch(2)
+    state = loader.state_dict()
+    remaining_ids = []
+    while True:
+        try:
+            remaining_ids.extend(loader.next_batch(2).sample_ids)
+        except StopIteration:
+            break
+
+    sample_ids = [*first_batch.sample_ids, *remaining_ids]
+    assert len(sample_ids) == 8
+    assert set(sample_ids) == {f"row-{index}" for index in range(8)}
+    assert loader.metrics()["data/loader/batches"] == 4
+    loader.close()
+
+    restored_pipeline = build_data_stream(
+        spec,
+        resolver,
+        context=BuildContext("task"),
+    )
+    restored = build_stateful_batch_loader(
+        restored_pipeline,
+        batch_size=2,
+        spec=DataLoaderSpec(
+            num_workers=2,
+            prefetch_factor=2,
+            persistent_workers=False,
+        ),
+    )
+    restored.load_state_dict(state)
+    restored_ids = []
+    while True:
+        try:
+            restored_ids.extend(restored.next_batch(2).sample_ids)
+        except StopIteration:
+            break
+    restored.close()
+    assert restored_ids == remaining_ids
+
+
+@pytest.mark.parametrize("format_name", ["parquet", "arrow"])
+def test_multiworker_columnar_sequence_packing_resumes_exactly(
+    tmp_path: Path,
+    format_name: str,
+) -> None:
+    table = pa.Table.from_pylist(rows(8))
+    path = tmp_path / f"packed.{format_name}"
+    if format_name == "parquet":
+        parquet.write_table(table, path, row_group_size=2)
+        source_descriptor = parquet_descriptor()
+    else:
+        with pa.OSFile(str(path), "wb") as sink, ipc.new_file(
+            sink, table.schema
+        ) as writer:
+            for batch in table.to_batches(max_chunksize=2):
+                writer.write_batch(batch)
+        source_descriptor = arrow_descriptor()
+    spec = DataPipelineSpec.from_mapping(
+        {
+            "source": {
+                "module": f"data_source:trainomni/{format_name}@1",
+                "config": {
+                    "dataset_id": f"{format_name}-packed-workers",
+                    "paths": [str(path)],
+                    "batch_rows": 2,
+                    "repeat": False,
+                },
+            },
+            "adapter": {"module": "data_adapter:trainomni/msswift@1"},
+            "transforms": [],
+            "model_io": {"module": "model_io:test/columnar@1"},
+            "supervision": {"module": "supervision:trainomni/causal_lm@1"},
+            "packer": {
+                "module": "packer:trainomni/sequence@1",
+                "config": {
+                    "max_length": 6,
+                    "pad_token_id": 0,
+                    "max_samples_per_pack": 2,
+                    "concat_fields": ["pixel_values"],
+                },
+            },
+            "collator": {"module": "collator:trainomni/multimodal@1"},
+        }
+    )
+    resolver = ModuleResolver(
+        ModuleRegistry(
+            (
+                source_descriptor,
+                adapter_descriptor(),
+                model_io_descriptor(),
+                supervision_descriptor(),
+                sequence_packer_descriptor(),
+                collator_descriptor(),
+            )
+        )
+    )
+
+    def loader():
+        return build_stateful_batch_loader(
+            build_data_stream(spec, resolver, context=BuildContext("task")),
+            batch_size=1,
+            spec=DataLoaderSpec(
+                num_workers=2,
+                prefetch_factor=2,
+                persistent_workers=False,
+            ),
+        )
+
+    first = loader()
+    initial = first.next_batch(1)
+    state = first.state_dict()
+    expected = []
+    while True:
+        try:
+            batch = first.next_batch(1)
+        except StopIteration:
+            break
+        expected.append(
+            (
+                batch.sample_ids,
+                batch.model_inputs["input_ids"].clone(),
+                batch.model_inputs["packed_attention_mask"].clone(),
+            )
+        )
+    first.close()
+    assert initial.supervision["packed_lengths"].tolist() == [[3, 3]]
+    assert len(expected) == 3
+
+    restored = loader()
+    restored.load_state_dict(state)
+    actual = []
+    while True:
+        try:
+            batch = restored.next_batch(1)
+        except StopIteration:
+            break
+        actual.append(
+            (
+                batch.sample_ids,
+                batch.model_inputs["input_ids"].clone(),
+                batch.model_inputs["packed_attention_mask"].clone(),
+            )
+        )
+    restored.close()
+    assert [item[0] for item in actual] == [item[0] for item in expected]
+    for actual_item, expected_item in zip(actual, expected, strict=True):
+        torch.testing.assert_close(actual_item[1], expected_item[1])
+        torch.testing.assert_close(actual_item[2], expected_item[2])
 
 
 def test_arrow_file_and_stream_are_read_in_bounded_batches(tmp_path: Path) -> None:

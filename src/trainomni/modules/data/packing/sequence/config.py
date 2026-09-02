@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 
+from trainomni.contracts._mapping import FrozenDict
 from trainomni.modules.data._validation import (
     normalize_string_sequence,
     require_int,
@@ -29,7 +29,7 @@ class SequencePackerConfig:
     offset_fields: tuple[str, ...] = ()
     list_fields: tuple[str, ...] = ()
     field_pad_values: Mapping[str, int | float] = field(
-        default_factory=lambda: MappingProxyType({})
+        default_factory=FrozenDict
     )
 
     def __post_init__(self) -> None:
@@ -92,5 +92,5 @@ class SequencePackerConfig:
         object.__setattr__(
             self,
             "field_pad_values",
-            MappingProxyType(dict(sorted(pad_values.items()))),
+            FrozenDict(dict(sorted(pad_values.items()))),
         )

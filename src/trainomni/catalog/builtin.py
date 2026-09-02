@@ -11,10 +11,14 @@ from trainomni.modules.data.adapters.msswift.module import (
 from trainomni.modules.data.collation.multimodal.module import (
     descriptor as multimodal_collator,
 )
+from trainomni.modules.data.collation.padding_free.module import (
+    descriptor as padding_free_collator,
+)
 from trainomni.modules.data.model_io.transformers.module import (
     descriptor as transformers_model_io,
 )
 from trainomni.modules.data.packing.none.module import descriptor as no_packing
+from trainomni.modules.data.packing.padding_free.module import descriptor as padding_free_packing
 from trainomni.modules.data.packing.sequence.module import descriptor as sequence_packing
 from trainomni.modules.data.sources.arrow.module import descriptor as arrow_source
 from trainomni.modules.data.sources.jsonl.module import descriptor as jsonl_source
@@ -104,7 +108,9 @@ def builtin_descriptors():
         preference_supervision(),
         no_packing(),
         sequence_packing(),
+        padding_free_packing(),
         multimodal_collator(),
+        padding_free_collator(),
         transformers_vision(),
         transformers_video(),
         model_default_attention(),

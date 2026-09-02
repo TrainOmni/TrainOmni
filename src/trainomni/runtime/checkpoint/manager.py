@@ -69,7 +69,7 @@ class CheckpointManager:
         run_digest: str,
         module_lock: Mapping[str, str],
         compatible_run_digests: tuple[str, ...] = (),
-        framework_version: str = "0.1.1",
+        framework_version: str = "0.1.2",
         process: Any | None = None,
         state_adapter: Any | None = None,
     ) -> None:

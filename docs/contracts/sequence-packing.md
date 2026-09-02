@@ -3,7 +3,7 @@
 TrainOmni does not call token concatenation “packing” unless it also preserves
 causal sample isolation and exact resume.
 
-The builtin `packer:trainomni/sequence@1` uses a resumable first-fit buffer and
+The builtin `packer:trainomni/sequence@1` uses a resumable sequential buffer and
 emits fixed-length examples. For every emitted pack it:
 
 - concatenates token IDs and resets `position_ids` per source sample;
@@ -42,3 +42,8 @@ because it inserts modal tokens.
 Models that use FlashAttention variable-length metadata, document masks, or a
 different packed-attention representation register an attention policy and,
 where necessary, a packer module. The training loop remains unchanged.
+
+For the separate opt-in unpadded representation and tested upstream CUTLASS
+varlen path, see [padding-free training](padding-free.md). Ordinary
+`sequence@1` does not turn into FlashAttention or padding-free execution merely
+by selecting another runtime kernel.

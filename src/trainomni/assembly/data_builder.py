@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
+from torch.utils.data import IterableDataset, get_worker_info
+
 from trainomni.contracts.batch import SupervisedExample
 from trainomni.core.context import BuildContext
 from trainomni.core.errors import CheckpointError, SpecError
@@ -31,7 +33,7 @@ def _restore_optional_state(module, state, *, owner: str) -> None:
     hook(state)
 
 
-class DataPipelineStream:
+class DataPipelineStream(IterableDataset):
     def __init__(
         self,
         *,
@@ -53,6 +55,50 @@ class DataPipelineStream:
         self._ready = []
         self._exhausted = False
         self._dropped_examples = 0
+        self._loader_batch_size: int | None = None
+        self._loader_rank = 0
+        self._loader_world_size = 1
+        self._worker_topology: tuple[int, int] | None = None
+
+    def configure_loader(
+        self,
+        *,
+        batch_size: int,
+        rank: int,
+        world_size: int,
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if world_size <= 0 or not 0 <= rank < world_size:
+            raise ValueError("loader rank must be in range")
+        if self._ready or self._exhausted:
+            raise CheckpointError("data loader must be configured before reading samples")
+        self._loader_batch_size = batch_size
+        self._loader_rank = rank
+        self._loader_world_size = world_size
+
+    def __iter__(self):
+        if self._loader_batch_size is None:
+            raise RuntimeError("data pipeline has not been configured for a loader")
+        worker = get_worker_info()
+        worker_id = 0 if worker is None else worker.id
+        num_workers = 1 if worker is None else worker.num_workers
+        topology = (worker_id, num_workers)
+        if self._worker_topology is None:
+            self.shard(
+                rank=self._loader_rank,
+                world_size=self._loader_world_size,
+                worker_id=worker_id,
+                num_workers=num_workers,
+            )
+            self._worker_topology = topology
+        elif self._worker_topology != topology:
+            raise CheckpointError("data pipeline worker topology changed")
+        while True:
+            try:
+                yield self.next_batch(self._loader_batch_size)
+            except StopIteration:
+                return
 
     def shard(
         self,
@@ -138,6 +184,7 @@ class DataPipelineStream:
             "ready": tuple(self._ready),
             "exhausted": self._exhausted,
             "dropped_examples": self._dropped_examples,
+            "worker_topology": self._worker_topology,
         }
 
     def metrics(self):
@@ -158,6 +205,7 @@ class DataPipelineStream:
             "ready",
             "exhausted",
             "dropped_examples",
+            "worker_topology",
         }
         if set(state) != expected:
             raise CheckpointError(
@@ -184,6 +232,34 @@ class DataPipelineStream:
             transform_states
         ) != len(self.transforms):
             raise CheckpointError("data transform state count mismatch")
+        saved_topology = state["worker_topology"]
+        if saved_topology is not None:
+            if (
+                not isinstance(saved_topology, (tuple, list))
+                or len(saved_topology) != 2
+            ):
+                raise CheckpointError("data pipeline worker topology is invalid")
+            if any(
+                not isinstance(value, int) or isinstance(value, bool)
+                for value in saved_topology
+            ):
+                raise CheckpointError("data pipeline worker topology is invalid")
+            saved_topology = tuple(saved_topology)
+            if saved_topology[1] <= 0 or not 0 <= saved_topology[0] < saved_topology[1]:
+                raise CheckpointError("data pipeline worker topology is invalid")
+        if self._loader_batch_size is not None and saved_topology is not None:
+            worker = get_worker_info()
+            worker_id = 0 if worker is None else worker.id
+            num_workers = 1 if worker is None else worker.num_workers
+            if saved_topology != (worker_id, num_workers):
+                raise CheckpointError("data pipeline worker topology changed")
+            self.shard(
+                rank=self._loader_rank,
+                world_size=self._loader_world_size,
+                worker_id=worker_id,
+                num_workers=num_workers,
+            )
+            self._worker_topology = (worker_id, num_workers)
         self.source.load_state_dict(state["source"])
         self.packer.load_state_dict(state["packer"])
         for index, (transform, transform_state) in enumerate(
@@ -200,6 +276,7 @@ class DataPipelineStream:
         self._ready = list(ready)
         self._exhausted = exhausted
         self._dropped_examples = dropped_examples
+        self._worker_topology = saved_topology
 
 
 def build_data_stream(

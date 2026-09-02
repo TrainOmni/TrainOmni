@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from types import MappingProxyType
 
 import torch
 
+from trainomni.contracts._mapping import FrozenDict
 from trainomni.contracts.batch import EncodedSample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
@@ -124,7 +124,7 @@ class TransformersModelIO:
         return EncodedSample(
             sample.sample_id,
             model_inputs,
-            MappingProxyType(supervision),
+            FrozenDict(supervision),
         )
 
     def encode(self, sample):

@@ -2,8 +2,8 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 
+from trainomni.contracts._mapping import FrozenDict
 from trainomni.modules.data._validation import require_int, require_number
 
 _MODES = {"auto", "stack", "pad", "concat", "list"}
@@ -16,10 +16,10 @@ class MultimodalCollatorConfig:
     padding_side: str = "right"
     pad_to_multiple_of: int | None = None
     field_modes: Mapping[str, str] = field(
-        default_factory=lambda: MappingProxyType({})
+        default_factory=FrozenDict
     )
     field_pad_values: Mapping[str, int | float] = field(
-        default_factory=lambda: MappingProxyType({})
+        default_factory=FrozenDict
     )
 
     def __post_init__(self) -> None:
@@ -52,11 +52,9 @@ class MultimodalCollatorConfig:
                 raise ValueError("field_pad_values keys must be non-empty field paths")
             require_number(value, field=f"field_pad_values.{path}")
             pad_values[path] = value
-        object.__setattr__(
-            self, "field_modes", MappingProxyType(dict(sorted(modes.items())))
-        )
+        object.__setattr__(self, "field_modes", FrozenDict(dict(sorted(modes.items()))))
         object.__setattr__(
             self,
             "field_pad_values",
-            MappingProxyType(dict(sorted(pad_values.items()))),
+            FrozenDict(dict(sorted(pad_values.items()))),
         )

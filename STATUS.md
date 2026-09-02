@@ -1,6 +1,6 @@
 # Status
 
-TrainOmni Framework replacement v0.1.1 is the corrected current implementation
+TrainOmni Framework replacement v0.1.2 is the corrected current implementation
 for the documented multimodal-understanding engineering scope. The rejected
 pre-redesign code is archive-only and is not a second active implementation.
 
@@ -12,11 +12,19 @@ pre-redesign code is archive-only and is not a second active implementation.
 - Flat/chat multimodal samples, media identity, image/video transforms,
   safetensors sidecar cache, Transformers ModelIO, supervision, collation and
   resumable sequence packing are implemented.
+- Opt-in padding-free packer/collator and an upstream xFormers CUTLASS Llama
+  integration are implemented. CUDA forward/backward and an explicit real-VLM
+  visual-prefix probe pass; this is not FlashAttention or a generic model toggle.
+  See [the contract](docs/contracts/padding-free.md).
 - Offline-cache schema v4 binds every per-sample uncollated model-input mapping,
   including media and auxiliary tensors; Framework computes the current digest
   before collation and rejects stale KD/DPO caches before model forward.
 - Named child data sources and deterministic weighted mixture sampling preserve
   every child cursor, selection cursor and per-source count across exact resume.
+- The default TorchData StatefulDataLoader runtime executes Parquet/Arrow
+  processing, packing and collation inside Windows-spawn-safe workers, supports
+  bounded prefetch/persistent workers/pinned batches, and restores per-worker
+  state before Framework gathers rank-local checkpoint state.
 - Monolithic and ordered multi-branch composite models support vision/video
   encoders, connectors, prefix/token-replace/cross-attention fusion and independent
   semantic/runtime attention selection.
@@ -59,18 +67,29 @@ pre-redesign code is archive-only and is not a second active implementation.
 
 ## Verification evidence
 
-- Full source suite: **182 passed, 1 skipped**. The only skip is the POSIX launcher
-  execution test on the current Windows host.
+- Current source including padding-free additions: **317 passed, 1 skipped**
+  (74.06 s); CUDA tests executed, only the POSIX launcher is skipped on Windows.
+  Ruff, CLI help/43 descriptors and `git diff --check` pass. The new modules are
+  included in the Git `v3` release snapshot, not in the earlier wheel.
+- Prior data-correctness baseline: **298 passed, 1 skipped**; together with nine coordinator
+  reproductions: **307 passed, 1 skipped**. The only skip is the POSIX launcher
+  execution test on the current Windows host. See the
+  [2026-09-03 local-data/packing report](docs/verification/local-packing-20260903.md).
+- Two-worker Parquet and Arrow IPC tests pass under Windows `spawn`, cover
+  disjoint physical-fragment assignment, complete sample coverage and exact
+  continuation from a snapshot containing both active and not-yet-active workers.
 - Ruff: clean across `src/trainomni` and `tests`.
 - Python compileall: passed with bytecode directed outside Framework.
-- Wheel: `trainomni-0.1.1-py3-none-any.whl` built successfully; SHA-256
-  `d63063ec658e4492f531264aa07263f8dec9364c68f2f061f77183270484191d`.
-- Isolated wheel import/CLI: version `0.1.1`; the current source catalog has 41
-  builtin descriptors and CLI help passes.
-- Installed-wheel corrected-path subset: **68 passed**; its builtin source digest
-  exactly matches the editable tree (`a7f7b23f862e4fe2fbc86a50f420bd54aa6d30cd7b3695453e45af4b59fa976f`).
-  The subset includes asset/data/cache/objective contracts, checkpoint and
-  rank-failure coordination, exact-resume Objective paths and two-rank Gloo.
+- Prior data-correctness wheel (before the new padding-free modules):
+  `trainomni-0.1.2-py3-none-any.whl` built successfully; SHA-256
+  `6fd9cf55d1b284016ad08e36031cc073dbd51596349daecf9c09bf9c3e68c845`.
+- Prior isolated wheel import/CLI: version `0.1.2` loaded from the isolated target;
+  that wheel has 41 builtin descriptors. The current source has 43 after adding
+  padding-free pack/collate; the earlier wheel does not contain this new route.
+- Current explicit real-VLM padding-free probe: 537 post-fusion tokens, zero
+  padding/no dense language mask, two BF16 connector updates, per-sample numerical
+  oracle, exact cross-sample isolation and same-fixture inference pass. No
+  additional package install. [Evidence](docs/verification/padding-free-20260903.md).
 - Project-local Windows interpreter: `Framework/.venv/Scripts/python.exe`, Python
   3.12.13, Torch 2.13.0+cu130. It resolves CUDA 13.0 on an RTX 4060 Ti (compute 8.9),
   and a true-BF16 forward/backward plus AdamW update passed on `cuda:0`.
@@ -122,10 +141,12 @@ pre-redesign code is archive-only and is not a second active implementation.
   presented as validation of the corrected cache, identity, metric or checkpoint
   paths.
 
-## Explicitly outside v0.1.1
+## Explicitly outside v0.1.2
 
 - Performance and model-quality characterization beyond the completed engineering
   gates. The medium-data loss curves are observations, not quality claims.
+- Remote S3 cache coordination, WebDataset/Energon, Grain, DALI, dynamic
+  multimodal cost batching and a dedicated device-prefetch stream.
 - Real multi-rank/multi-host Linux NCCL execution and topology-change acceptance.
 - DeepSpeed Linux backward/step and native ZeRO checkpoint bridging.
 - Ascend/`torch_npu` device metrics, HCCL execution and multi-NPU checkpoint gates.

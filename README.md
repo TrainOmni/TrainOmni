@@ -4,6 +4,11 @@ TrainOmni is a module-oriented multimodal training framework. Framework source,
 TaskSpec, RunSpec and generated output are separate roots. A model or training
 task is composed from typed modules; core code does not branch on model names.
 
+Git release **v3** includes the corrected data path, StatefulDataLoader runtime,
+and opt-in padding-free/CUTLASS varlen integration. Python package version is
+`0.1.2`; the Git tag does not mean package version `3.0`. See
+[v3 release scope and verification](docs/releases/v3.md).
+
 The replacement implementation currently has an executable first vertical slice:
 
 - explicit descriptor/registry/resolver with capability preflight;
@@ -15,6 +20,9 @@ The replacement implementation currently has an executable first vertical slice:
 - native PyArrow Parquet row-group and Arrow IPC readers with pre-I/O DP-rank
   and worker partitioning, plus a separate ms-swift-compatible multimodal row
   adapter;
+- a small StatefulDataLoader runtime with worker-side processing/collation,
+  bounded prefetch, optional persistent workers/pinned memory, non-blocking
+  device transfer and worker/rank checkpoint state;
 - producer-manifest identities for relocatable Parquet/Arrow snapshots and local
   Transformers assets, or immutable remote commit revisions;
 - composite encoder/connector/fusion/language model assembly;
@@ -62,7 +70,9 @@ Important documents:
 - multimodal field collation policies: docs/contracts/collation.md
 - canonical flat/chat samples and assistant-mask semantics: docs/contracts/samples.md
 - Parquet/Arrow and ms-swift-compatible data path: docs/modules/columnar-data.md
+- basic multi-worker data runtime: docs/modules/data-loading.md
 - resumable sequence packing and attention isolation: docs/contracts/sequence-packing.md
+- opt-in padding-free data and upstream CUTLASS varlen: docs/contracts/padding-free.md
 - verified support and explicit non-claims: docs/verification/support-matrix.md
 - current Windows CUDA development environment: docs/verification/windows-cuda-environment.md
 - historical pre-fix real VLM five-stage CUDA evidence:

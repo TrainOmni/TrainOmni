@@ -42,7 +42,7 @@ class DeviceContext:
         """Move model-forward inputs and apply true-precision input casting."""
 
         if isinstance(value, torch.Tensor):
-            value = value.to(self.device)
+            value = value.to(self.device, non_blocking=True)
             if self.precision == "bf16_true" and value.is_floating_point():
                 value = value.to(torch.bfloat16)
             return value
@@ -58,7 +58,7 @@ class DeviceContext:
         """Move identity-bearing labels/supervision without changing dtype."""
 
         if isinstance(value, torch.Tensor):
-            return value.to(self.device)
+            return value.to(self.device, non_blocking=True)
         if isinstance(value, Mapping):
             return {key: self.move_exact(inner) for key, inner in value.items()}
         if isinstance(value, tuple):

@@ -14,6 +14,7 @@ from trainomni.contracts.loss import ObjectiveMetric
 from trainomni.core.context import ObjectiveContext
 from trainomni.core.errors import CheckpointError, OptimizationError, SpecError
 from trainomni.runtime.checkpoint.manager import CheckpointManager
+from trainomni.runtime.data_loader import build_stateful_batch_loader
 from trainomni.runtime.execution import build_execution_backend
 from trainomni.runtime.kernels.activation_checkpointing import (
     apply_activation_checkpointing,
@@ -72,7 +73,6 @@ class TrainEngine:
                 + "; ".join(provenance_issues)
             )
         self.objective = objective
-        self.stream = stream
         self.run = run
         self.attention_kernel_modules = apply_attention_kernel(
             model, run.attention_kernel
@@ -91,14 +91,17 @@ class TrainEngine:
         self.scheduler = self.execution.scheduler
         self.process = self.execution.process
         self.device = self.execution.device
-        if self.process.world_size > 1:
-            shard = getattr(self.stream, "shard", None)
-            if not callable(shard):
-                self.execution.close()
-                raise SpecError(
-                    "multi-rank execution requires a rank-shardable batch stream"
-                )
-            shard(rank=self.process.rank, world_size=self.process.world_size)
+        try:
+            self.stream = build_stateful_batch_loader(
+                stream,
+                batch_size=run.per_device_batch_size,
+                spec=run.data_loader,
+                rank=self.process.rank,
+                world_size=self.process.world_size,
+            )
+        except Exception:
+            self.execution.close()
+            raise
         self.global_step = 0
         self.micro_step = 0
         self.scaler = self._build_scaler()
@@ -415,4 +418,9 @@ class TrainEngine:
         )
 
     def close(self) -> None:
-        self.execution.close()
+        close_stream = getattr(self.stream, "close", None)
+        try:
+            if callable(close_stream):
+                close_stream()
+        finally:
+            self.execution.close()

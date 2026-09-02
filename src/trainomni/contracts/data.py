@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Any
 
-from ._identity import freeze_mapping, normalize_identity
+from ._identity import normalize_identity
+from ._mapping import FrozenDict
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +22,7 @@ class DataRecord:
     fields: Mapping[str, Any]
     source: str
     position: Mapping[str, Any] = field(
-        default_factory=lambda: MappingProxyType({})
+        default_factory=FrozenDict
     )
 
     def __post_init__(self) -> None:
@@ -36,11 +36,5 @@ class DataRecord:
             "source",
             normalize_identity(self.source, field="data record source"),
         )
-        object.__setattr__(
-            self, "fields", freeze_mapping(self.fields, field="data record fields")
-        )
-        object.__setattr__(
-            self,
-            "position",
-            freeze_mapping(self.position, field="data record position"),
-        )
+        object.__setattr__(self, "fields", FrozenDict(self.fields))
+        object.__setattr__(self, "position", FrozenDict(self.position))

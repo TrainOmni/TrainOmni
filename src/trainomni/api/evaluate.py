@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from trainomni.core.errors import SpecError
+from trainomni.runtime.data_loader import build_stateful_batch_loader
 from trainomni.runtime.evaluation import evaluate_batches
 from trainomni.runtime.random import seed_everything
 from trainomni.specs.digest import canonical_value, identity_digest
@@ -50,16 +51,26 @@ def evaluate(
         checkpoint=checkpoint,
         restore_objective=True,
     )
-    result = evaluate_batches(
-        model=model,
-        objective=assembly.objective,
-        stream=assembly.evaluation_stream,
-        evaluators=assembly.evaluators,
-        device=device,
-        batches=batches,
+    evaluation_stream = build_stateful_batch_loader(
+        assembly.evaluation_stream,
         batch_size=run.per_device_batch_size,
-        execution_model=execution_model,
+        spec=run.data_loader,
     )
+    try:
+        result = evaluate_batches(
+            model=model,
+            objective=assembly.objective,
+            stream=evaluation_stream,
+            evaluators=assembly.evaluators,
+            device=device,
+            batches=batches,
+            batch_size=run.per_device_batch_size,
+            execution_model=execution_model,
+        )
+    finally:
+        close_stream = getattr(evaluation_stream, "close", None)
+        if callable(close_stream):
+            close_stream()
     evaluation_config = {
         "schema_version": 1,
         "checkpoint": {
@@ -79,6 +90,7 @@ def evaluate(
             "attention_kernel": run.attention_kernel,
             "compile": canonical_value(run.compile),
             "per_device_batch_size": run.per_device_batch_size,
+            "data_loader": canonical_value(run.data_loader),
             "batches": batches,
         },
     }

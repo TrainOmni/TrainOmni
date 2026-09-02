@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
@@ -21,6 +23,29 @@ def _require_parquet():
     except ImportError as exc:
         raise SpecError("Parquet data requires pyarrow>=15") from exc
     return parquet
+
+
+@dataclass(frozen=True, slots=True)
+class _ParquetFragmentReader:
+    columns: tuple[str, ...]
+    batch_rows: int
+
+    def __call__(self, fragment):
+        parquet = _require_parquet()
+        row_group = int(fragment.metadata["row_group"])
+        try:
+            parquet_file = parquet.ParquetFile(fragment.path)
+            batches = parquet_file.iter_batches(
+                batch_size=self.batch_rows,
+                row_groups=[row_group],
+                columns=list(self.columns) or None,
+                use_threads=True,
+            )
+            yield from pyarrow_rows(batches)
+        except Exception as exc:
+            raise SpecError(
+                f"failed reading {fragment.path} row group {row_group}: {exc}"
+            ) from exc
 
 
 def _factory(config: ParquetSourceConfig, context):
@@ -63,26 +88,13 @@ def _factory(config: ParquetSourceConfig, context):
     if not fragments:
         raise SpecError("Parquet dataset contains no non-empty row groups")
 
-    def iter_fragment(fragment):
-        row_group = int(fragment.metadata["row_group"])
-        try:
-            parquet_file = parquet.ParquetFile(fragment.path)
-            batches = parquet_file.iter_batches(
-                batch_size=config.batch_rows,
-                row_groups=[row_group],
-                columns=list(config.columns) or None,
-                use_threads=True,
-            )
-            yield from pyarrow_rows(batches)
-        except Exception as exc:
-            raise SpecError(
-                f"failed reading {fragment.path} row group {row_group}: {exc}"
-            ) from exc
-
     return ColumnarRecordSource(
         dataset_id=config.dataset_id,
         fragments=fragments,
-        iter_fragment=iter_fragment,
+        iter_fragment=_ParquetFragmentReader(
+            columns=tuple(config.columns),
+            batch_rows=config.batch_rows,
+        ),
         repeat=config.repeat,
         format_name="parquet",
         dataset_manifest_sha256=config.dataset_manifest_sha256,

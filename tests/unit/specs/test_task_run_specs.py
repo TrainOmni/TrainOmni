@@ -97,6 +97,51 @@ def test_checkpoint_step_cardinality_does_not_coerce(value, tmp_path: Path) -> N
         RunSpec.from_mapping(payload)
 
 
+def test_data_loader_runtime_config_is_typed_and_fail_closed(tmp_path: Path) -> None:
+    payload = run_payload(tmp_path / "checkpoints")
+    payload["data_loader"] = {
+        "num_workers": 4,
+        "prefetch_factor": 3,
+        "persistent_workers": True,
+        "pin_memory": True,
+        "snapshot_every_n_steps": 20,
+    }
+    run = RunSpec.from_mapping(payload)
+    assert run.data_loader.num_workers == 4
+    assert run.data_loader.prefetch_factor == 3
+    assert run.data_loader.persistent_workers
+    assert run.data_loader.pin_memory
+    assert run.data_loader.in_order
+
+    payload["data_loader"]["in_order"] = False
+    with pytest.raises(SpecError, match="resumable state"):
+        RunSpec.from_mapping(payload)
+
+    payload["data_loader"] = {"num_workers": 0, "prefetch_factor": 2}
+    with pytest.raises(SpecError, match="requires num_workers"):
+        RunSpec.from_mapping(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("num_workers", 1.5),
+        ("num_workers", True),
+        ("prefetch_factor", 2.5),
+        ("prefetch_factor", False),
+        ("snapshot_every_n_steps", 1.5),
+        ("snapshot_every_n_steps", True),
+    ],
+)
+def test_data_loader_cardinality_does_not_coerce(
+    field, value, tmp_path: Path
+) -> None:
+    payload = run_payload(tmp_path / "checkpoints")
+    payload["data_loader"] = {"num_workers": 1, field: value}
+    with pytest.raises(SpecError, match=field):
+        RunSpec.from_mapping(payload)
+
+
 def test_data_source_names_do_not_coerce_or_collide() -> None:
     payload = task_payload()
     payload["data"]["sources"] = {
@@ -112,7 +157,6 @@ def test_data_source_names_do_not_coerce_or_collide() -> None:
     }
     with pytest.raises(SpecError, match="unique after normalization"):
         TaskSpec.from_mapping(payload)
-
 
 def test_run_identity_excludes_only_physical_checkpoint_directory(
     tmp_path: Path,

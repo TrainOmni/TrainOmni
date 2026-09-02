@@ -97,6 +97,12 @@ optimizer:
 scheduler:
   name: cosine
   warmup_steps: 50
+data_loader:
+  num_workers: 4
+  prefetch_factor: 2
+  persistent_workers: true
+  pin_memory: true
+  snapshot_every_n_steps: 100
 activation_checkpointing:
   enabled: true
   components: [model]
@@ -105,6 +111,13 @@ checkpoint:
   directory: outputs/checkpoints
   every_steps: 100
 ```
+
+Finite streams retain EOF across loader checkpoint restoration; they do not
+implicitly start a new epoch. Multiple workers can each emit a partial final
+batch when `drop_last=false`. Loader state schema v2 records this terminal state;
+legacy v1 loader payloads are accepted only when their pinned TorchData finished
+marker is valid. This does not bypass checkpoint-level source/module identity
+validation or make a checkpoint from changed Framework code resumable.
 
 Execution is a RunSpec concern. The task is unchanged when moving between direct
 PyTorch backends:

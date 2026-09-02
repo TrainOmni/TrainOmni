@@ -4,31 +4,29 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Any, Literal
 
-from ._identity import freeze_mapping, normalize_identity
+from ._identity import normalize_identity
+from ._mapping import FrozenDict
 
 
 @dataclass(frozen=True, slots=True)
 class ContentBlock:
     kind: Literal["text", "image", "video", "audio"]
     value: Any
-    metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    metadata: Mapping[str, Any] = field(default_factory=FrozenDict)
 
     def __post_init__(self) -> None:
         if self.kind not in {"text", "image", "video", "audio"}:
             raise ValueError(f"unsupported content block kind: {self.kind!r}")
-        object.__setattr__(
-            self, "metadata", freeze_mapping(self.metadata, field="block metadata")
-        )
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata))
 
 
 @dataclass(frozen=True, slots=True)
 class Message:
     role: str
     content: tuple[ContentBlock, ...]
-    metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    metadata: Mapping[str, Any] = field(default_factory=FrozenDict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, str) or not self.role.strip():
@@ -41,16 +39,14 @@ class Message:
             raise TypeError("message content must contain ContentBlock values")
         object.__setattr__(self, "role", normalize_identity(self.role, field="message role"))
         object.__setattr__(self, "content", tuple(self.content))
-        object.__setattr__(
-            self, "metadata", freeze_mapping(self.metadata, field="message metadata")
-        )
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata))
 
 
 @dataclass(frozen=True, slots=True)
 class OmniSample:
     sample_id: str
     content: tuple[ContentBlock, ...]
-    metadata: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    metadata: Mapping[str, Any] = field(default_factory=FrozenDict)
     messages: tuple[Message, ...] = ()
 
     def __post_init__(self) -> None:
@@ -68,9 +64,7 @@ class OmniSample:
         object.__setattr__(self, "sample_id", sample_id)
         object.__setattr__(self, "content", tuple(self.content))
         object.__setattr__(self, "messages", tuple(self.messages))
-        object.__setattr__(
-            self, "metadata", freeze_mapping(self.metadata, field="sample metadata")
-        )
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata))
 
     def map_blocks(self, transform: Callable[[ContentBlock], ContentBlock]) -> OmniSample:
         if self.content:

@@ -29,10 +29,13 @@ hardware runs demonstrate feasibility, not execution of the corrected current tr
 | Hash-pinned safetensors sidecar cache | current-tree automated | schema-v4 index/shard digests plus full expanded input IDs, full attention mask, absolute target positions/IDs, complete uncollated model-input/media digest, producer and branch bindings; builtin supervision computes current-input digests before collation, stale media/aux inputs and schemas v2/v3 fail before model forward |
 | Transformers processor/chat template/assistant mask | verified with contract fixture | concrete processors remain model-task integration work |
 | Variable multimodal tensor collation | current-tree automated; historical pre-fix real VLM; revalidation pending | stack/pad/concat/list are explicit; historical unequal batch route is retained as feasibility evidence |
-| Fixed-length multimodal sequence packing | current-tree automated; historical pre-fix real VLM; revalidation pending | current boundary-mask/block-diagonal tests; historical CUDA forward/update/eval route predates current engine corrections |
+| Fixed-length multimodal sequence packing | current-tree automated and single-GPU real VLM verified | [2026-09-03 local verification](local-packing-20260903.md): explicit packing-aware Qwen3.5 Vision + MiniCPM5 adapter, two CUDA BF16 optimizer steps and model-only reload/eval; two-worker columnar packing is separately automated; no variable-length FlashAttention or throughput claim |
+| Padding-free data + variable-length causal attention | current-tree CUDA kernel and explicit real-VLM probe verified | [2026-09-03 verification](padding-free-20260903.md): optional xFormers CUTLASS via current Torch aten, FP16/BF16 MHA/GQA numerical/gradient/isolation checks, real BF16 connector updates; Llama-specific post-fusion adapter, one pack per batch, no dense LM mask; not FlashAttention, generic-VLM/CLI-resume/distributed or speedup evidence |
 | Multiple ordered modal branches | verified | independent encoder/connector per branch; audio can be added as another branch |
 | Prefix, token replacement, cross-attention fusion | verified with fixtures | prefix regenerates ordinary expanded `position_ids` and rejects stale model-specific position/cache fields; token replacement supports masked unequal modal counts; cross-attention requires `language.cross_attention` |
 | Builtin multi-dataset weighted mixer | current-tree automated; historical pre-fix real VLM; revalidation pending | current deterministic cursor/count/identity tests; historical 1:3 CUDA route is not a current-tree run |
+| Stateful multi-worker Parquet/Arrow runtime | current-tree Windows-spawn verified | TorchData StatefulDataLoader is the default runtime; physical fragments are assigned before I/O, worker processing/collation/prefetch and exact worker-state continuation pass with two workers; local storage only |
+| Pinned batch plus non-blocking device transfer | implemented; tensor contract automated | `OmniBatch.pin_memory()` recursively pins tensors and device placement requests non-blocking copies; end-to-end throughput/overlap is not yet characterized |
 
 ## Parameter and execution policies
 
@@ -73,7 +76,7 @@ hardware runs demonstrate feasibility, not execution of the corrected current tr
 | Framework / Task / Run / Output root separation | verified | physical `checkpoint.directory` is excluded from RunSpec identity and stored in a separate location receipt; same-root directory relocation plus full resume passes |
 | External Transformers asset identity | verified | immutable remote commit revision or producer-owned local asset-manifest digest enters task/module/checkpoint identity; unpinned assets are marked non-reproducible and checkpoint/exact-resume claims fail closed |
 | Parquet/Arrow source identity | verified | producer-owned dataset-manifest digest plus logical fragment layout is semantic identity; physical roots may move; changed manifests fail exact restore; payloads are not repeatedly hashed by readers |
-| Finite-source completion | verified single-process | packer tail flush plus explicit partial/drop-last behavior; multi-rank finite/unknown exhaustion fails before reading until an equal-step sampler exists |
+| Finite-source completion | verified single-process and two-worker columnar | packer tail flush plus explicit partial/drop-last behavior; multi-rank finite/unknown exhaustion fails before reading until an equal-step sampler exists |
 
 ## Distributed and platform boundary
 
@@ -96,6 +99,9 @@ hardware runs demonstrate feasibility, not execution of the corrected current tr
 TRL, PEFT, Accelerate, ms-swift, LLaMA-Factory, VeOmni, TorchTitan and NeMo are
 not runtime dependencies or backends. Their pinned source trees are external
 reading references only. The in-process runtime dependency set is declared in
-`pyproject.toml`: PyTorch, Transformers, safetensors, PyYAML and Pillow; PyAV is
-optional only for video-file decoding. DeepSpeed is an optional Linux dependency
-used only when its explicit execution backend is selected.
+`pyproject.toml`: PyTorch, TorchData StatefulDataLoader, Transformers,
+safetensors, PyYAML, Pillow and PyArrow; PyAV is optional only for video-file
+decoding. DeepSpeed is an optional Linux dependency used only when its explicit
+execution backend is selected.
+The opt-in padding-free Llama helper additionally uses a compatible optional
+xFormers installation; it is not imported by ordinary training/data paths.

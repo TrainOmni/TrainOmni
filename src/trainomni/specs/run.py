@@ -509,6 +509,78 @@ class CheckpointSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class DataLoaderSpec:
+    """Machine-level settings for the default PyTorch data runtime."""
+
+    num_workers: int = 0
+    prefetch_factor: int | None = None
+    persistent_workers: bool = False
+    pin_memory: bool = False
+    in_order: bool = True
+    snapshot_every_n_steps: int = 1
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> DataLoaderSpec:
+        allowed = {
+            "num_workers",
+            "prefetch_factor",
+            "persistent_workers",
+            "pin_memory",
+            "in_order",
+            "snapshot_every_n_steps",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise SpecError(f"data_loader contains unknown keys: {', '.join(unknown)}")
+        num_workers = _strict_int(
+            value.get("num_workers", 0), field="data_loader.num_workers"
+        )
+        raw_prefetch = value.get("prefetch_factor")
+        prefetch_factor = (
+            None
+            if raw_prefetch is None
+            else _strict_int(raw_prefetch, field="data_loader.prefetch_factor")
+        )
+        persistent_workers = value.get("persistent_workers", False)
+        pin_memory = value.get("pin_memory", False)
+        in_order = value.get("in_order", True)
+        snapshot_every_n_steps = _strict_int(
+            value.get("snapshot_every_n_steps", 1),
+            field="data_loader.snapshot_every_n_steps",
+        )
+        if num_workers < 0:
+            raise SpecError("data_loader.num_workers must be non-negative")
+        if prefetch_factor is not None and prefetch_factor <= 0:
+            raise SpecError("data_loader.prefetch_factor must be positive when set")
+        if num_workers == 0 and prefetch_factor is not None:
+            raise SpecError("data_loader.prefetch_factor requires num_workers > 0")
+        if not all(
+            isinstance(item, bool)
+            for item in (persistent_workers, pin_memory, in_order)
+        ):
+            raise SpecError(
+                "data_loader persistent_workers/pin_memory/in_order must be booleans"
+            )
+        if persistent_workers and num_workers == 0:
+            raise SpecError("data_loader.persistent_workers requires num_workers > 0")
+        if not in_order:
+            raise SpecError(
+                "data_loader.in_order=false is not supported because TorchData "
+                "does not guarantee resumable state for out-of-order delivery"
+            )
+        if snapshot_every_n_steps <= 0:
+            raise SpecError("data_loader.snapshot_every_n_steps must be positive")
+        return cls(
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
+            persistent_workers=persistent_workers,
+            pin_memory=pin_memory,
+            in_order=in_order,
+            snapshot_every_n_steps=snapshot_every_n_steps,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RunSpec:
     schema_version: int
     name: str
@@ -527,6 +599,7 @@ class RunSpec:
     compile: CompileSpec
     execution: ExecutionSpec
     update_evidence: UpdateEvidenceSpec
+    data_loader: DataLoaderSpec
     checkpoint: CheckpointSpec
 
     @classmethod
@@ -549,6 +622,7 @@ class RunSpec:
             "compile",
             "execution",
             "update_evidence",
+            "data_loader",
             "checkpoint",
         }
         unknown = sorted(set(value) - allowed)
@@ -594,6 +668,7 @@ class RunSpec:
         raw_compile = value.get("compile", {})
         raw_execution = value.get("execution", {})
         raw_update_evidence = value.get("update_evidence", {})
+        raw_data_loader = value.get("data_loader", {})
         raw_checkpoint = value.get("checkpoint")
         if not isinstance(raw_optimizer, Mapping):
             raise SpecError("run.optimizer must be a mapping")
@@ -607,6 +682,8 @@ class RunSpec:
             raise SpecError("run.execution must be a mapping")
         if not isinstance(raw_update_evidence, Mapping):
             raise SpecError("run.update_evidence must be a mapping")
+        if not isinstance(raw_data_loader, Mapping):
+            raise SpecError("run.data_loader must be a mapping")
         if not isinstance(raw_checkpoint, Mapping):
             raise SpecError("run.checkpoint must be a mapping")
         precision = str(value.get("precision", "fp32"))
@@ -639,6 +716,7 @@ class RunSpec:
             compile=CompileSpec.from_mapping(raw_compile),
             execution=ExecutionSpec.from_mapping(raw_execution),
             update_evidence=UpdateEvidenceSpec.from_mapping(raw_update_evidence),
+            data_loader=DataLoaderSpec.from_mapping(raw_data_loader),
             checkpoint=CheckpointSpec.from_mapping(raw_checkpoint),
         )
 

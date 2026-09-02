@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Any
 
-from ._identity import freeze_mapping, normalize_identity
+from ._identity import normalize_identity
+from ._mapping import FrozenDict
 
 
 def _pin_memory(value: Any) -> Any:
@@ -26,7 +26,7 @@ def _pin_memory(value: Any) -> Any:
 class EncodedSample:
     sample_id: str
     model_inputs: Mapping[str, Any]
-    supervision: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    supervision: Mapping[str, Any] = field(default_factory=FrozenDict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -36,16 +36,8 @@ class EncodedSample:
         )
         if not self.model_inputs:
             raise ValueError("encoded model_inputs must not be empty")
-        object.__setattr__(
-            self,
-            "model_inputs",
-            freeze_mapping(self.model_inputs, field="encoded model_inputs"),
-        )
-        object.__setattr__(
-            self,
-            "supervision",
-            freeze_mapping(self.supervision, field="encoded supervision"),
-        )
+        object.__setattr__(self, "model_inputs", FrozenDict(self.model_inputs))
+        object.__setattr__(self, "supervision", FrozenDict(self.supervision))
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +45,7 @@ class SupervisedExample:
     sample_id: str
     model_inputs: Mapping[str, Any]
     labels: Any
-    supervision: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    supervision: Mapping[str, Any] = field(default_factory=FrozenDict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -63,16 +55,8 @@ class SupervisedExample:
         )
         if not self.model_inputs:
             raise ValueError("supervised model_inputs must not be empty")
-        object.__setattr__(
-            self,
-            "model_inputs",
-            freeze_mapping(self.model_inputs, field="supervised model_inputs"),
-        )
-        object.__setattr__(
-            self,
-            "supervision",
-            freeze_mapping(self.supervision, field="supervised supervision"),
-        )
+        object.__setattr__(self, "model_inputs", FrozenDict(self.model_inputs))
+        object.__setattr__(self, "supervision", FrozenDict(self.supervision))
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +64,7 @@ class OmniBatch:
     sample_ids: tuple[str, ...]
     model_inputs: Mapping[str, Any]
     labels: Any
-    supervision: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    supervision: Mapping[str, Any] = field(default_factory=FrozenDict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.sample_ids, (tuple, list)) or not self.sample_ids:
@@ -92,16 +76,8 @@ class OmniBatch:
         if not self.model_inputs:
             raise ValueError("batch.model_inputs must not be empty")
         object.__setattr__(self, "sample_ids", sample_ids)
-        object.__setattr__(
-            self,
-            "model_inputs",
-            freeze_mapping(self.model_inputs, field="batch model_inputs"),
-        )
-        object.__setattr__(
-            self,
-            "supervision",
-            freeze_mapping(self.supervision, field="batch supervision"),
-        )
+        object.__setattr__(self, "model_inputs", FrozenDict(self.model_inputs))
+        object.__setattr__(self, "supervision", FrozenDict(self.supervision))
 
     def pin_memory(self) -> OmniBatch:
         return OmniBatch(
