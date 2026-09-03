@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import math
+import multiprocessing
 import time
 from collections.abc import Mapping
 from numbers import Real
 from typing import Any
 
-from trainomni.core.errors import CheckpointError, SpecError
+from trainomni.core.errors import CheckpointError, DataLoadingError, SpecError
 from trainomni.specs.run import DataLoaderSpec
 
 
@@ -45,7 +46,20 @@ class StatefulBatchLoader:
         }
         if spec.prefetch_factor is not None:
             loader_kwargs["prefetch_factor"] = spec.prefetch_factor
+        if spec.num_workers:
+            import torch
+
+            if spec.multiprocessing_context not in multiprocessing.get_all_start_methods():
+                raise SpecError(
+                    f"data loader start method {spec.multiprocessing_context!r} "
+                    "is unavailable on this platform; use spawn"
+                )
+            if spec.multiprocessing_context == "fork" and torch.cuda.is_initialized():
+                raise SpecError("cannot fork data workers after CUDA initialization; use spawn")
+            loader_kwargs["multiprocessing_context"] = spec.multiprocessing_context
+            loader_kwargs["timeout"] = spec.timeout_seconds
         self.pipeline = pipeline
+        self.rank = rank
         self.batch_size = batch_size
         self.spec = spec
         self.loader = StatefulDataLoader(pipeline, **loader_kwargs)
@@ -78,6 +92,14 @@ class StatefulBatchLoader:
             # starts a new epoch when restoring a finished iterator.
             self._exhausted = True
             raise
+        except Exception as exc:
+            raise DataLoadingError(
+                f"batch loading failed on rank {self.rank} "
+                f"(workers={self.spec.num_workers}, "
+                f"start_method={self.spec.multiprocessing_context}, "
+                f"timeout_seconds={self.spec.timeout_seconds}); "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
         self._wait_seconds += time.perf_counter() - started
         self._batches += 1
         sample_ids = getattr(batch, "sample_ids", None)
@@ -165,6 +187,7 @@ class StatefulBatchLoader:
             "data/loader/batches": self._batches,
             "data/loader/samples": self._samples,
             "data/loader/wait_seconds": self._wait_seconds,
+            "data/loader/wait_seconds_total": self._wait_seconds,
             "data/loader/num_workers": self.spec.num_workers,
             "data/loader/prefetch_factor": self.spec.prefetch_factor or 0,
             "data/loader/pin_memory": int(self.spec.pin_memory),

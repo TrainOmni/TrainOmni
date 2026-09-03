@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ import torch
 from trainomni import __version__
 from trainomni.contracts.loss import ObjectiveMetric
 from trainomni.core.context import ObjectiveContext
-from trainomni.core.errors import CheckpointError, OptimizationError, SpecError
+from trainomni.core.errors import CheckpointError, DataLoadingError, OptimizationError, SpecError
 from trainomni.runtime.checkpoint.manager import CheckpointManager
 from trainomni.runtime.data_loader import build_stateful_batch_loader
 from trainomni.runtime.execution import build_execution_backend
@@ -178,6 +179,9 @@ class TrainEngine:
         return tuple(records)
 
     def _optimizer_step(self) -> StepMetrics:
+        step_started = time.perf_counter()
+        data_metric_hook = getattr(self.stream, "metrics", None)
+        before_metrics = {} if not callable(data_metric_hook) else dict(data_metric_hook())
         term_totals: dict[str, list[float]] = {}
         term_weights: dict[str, float] = {}
         objective_metric_totals: dict[str, list[Any]] = {}
@@ -188,8 +192,17 @@ class TrainEngine:
             with self.execution.accumulation_context(
                 final_microbatch=index == accumulation - 1
             ):
-                batch = self.device.move_batch(
-                    self.stream.next_batch(self.run.per_device_batch_size)
+                failure = None
+                try:
+                    batch = self.device.move_batch(
+                        self.stream.next_batch(self.run.per_device_batch_size)
+                    )
+                except Exception as exc:  # noqa: BLE001 -- coordinate rank-local failures before collectives
+                    failure = exc
+                if self.process.world_size == 1 and failure is not None:
+                    raise failure
+                self.process.propagate_rank_failure(
+                    failure, owner="training batch preparation", error_type=DataLoadingError,
                 )
                 context = ObjectiveContext(
                     global_step=self.global_step, micro_step=index
@@ -309,10 +322,14 @@ class TrainEngine:
                     f"objective metric {name!r} global denominator must be positive"
                 )
             objective_metrics[name] = global_numerator / global_denominator
-        data_metric_hook = getattr(self.stream, "metrics", None)
         data_metrics = (
             {} if not callable(data_metric_hook) else dict(data_metric_hook())
         )
+        if "data/loader/wait_seconds" in data_metrics:
+            data_metrics["data/loader/wait_seconds_step"] = (
+                data_metrics["data/loader/wait_seconds"]
+                - before_metrics.get("data/loader/wait_seconds", 0.0)
+            )
         data_metrics_by_rank = self.process.all_gather_metrics(data_metrics)
         record = StepMetrics(
             global_step=self.global_step,
@@ -360,6 +377,22 @@ class TrainEngine:
                     for rank, metrics in enumerate(record.data_metrics_by_rank)
                 ],
                 "parameter_evidence": record.parameter_evidence,
+                "host_step_seconds": time.perf_counter() - step_started,
+                "metric_scopes": {
+                    "objective_metrics": {
+                        "scope": "all_data_parallel_ranks",
+                        "window": "optimizer_step_including_all_microbatches",
+                        "reductions": {
+                            name: values[0] for name, values in objective_metric_totals.items()
+                        },
+                    },
+                    "data_metrics": {
+                        "rank": self.process.rank,
+                        "wait_seconds": "cumulative_host_batch_wait_not_gpu_idle",
+                        "wait_seconds_total": "cumulative_host_batch_wait_not_gpu_idle",
+                        "wait_seconds_step": "optimizer_step_host_batch_wait",
+                    },
+                },
             },
         )
         if (

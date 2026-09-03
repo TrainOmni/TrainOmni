@@ -13,6 +13,12 @@ from ..protocol import AttentionInputs
 from .config import PackedAttentionConfig
 
 
+def _describe(value):
+    if isinstance(value, torch.Tensor):
+        return f"shape={tuple(value.shape)}, dtype={value.dtype}, device={value.device}"
+    return f"type={type(value).__name__}"
+
+
 class PackedAttentionPolicy:
     def __init__(self, config: PackedAttentionConfig) -> None:
         self.config = config
@@ -29,7 +35,7 @@ class PackedAttentionPolicy:
         block = model_inputs.get(self.config.block_attention_field)
         segments = model_inputs.get(self.config.segment_ids_field)
         if not isinstance(block, torch.Tensor) or block.dtype is not torch.bool:
-            raise SpecError("packed attention mask must be a boolean tensor")
+            raise SpecError(f"packed attention mask must be a boolean tensor; got {_describe(block)}")
         if block.shape != (
             input_ids.shape[0],
             1,
@@ -37,12 +43,17 @@ class PackedAttentionPolicy:
             input_ids.shape[1],
         ):
             raise SpecError(
-                "packed attention mask must be [batch, 1, sequence, sequence]"
+                "packed attention mask must be [batch, 1, sequence, sequence] "
+                f"= {(input_ids.shape[0], 1, input_ids.shape[1], input_ids.shape[1])}; "
+                f"got {_describe(block)}. The singleton axis is the head axis, not batch."
             )
         if not isinstance(segments, torch.Tensor) or segments.shape != input_ids.shape:
-            raise SpecError("packed segment ids must align with input_ids")
+            raise SpecError(
+                f"packed segment ids must align with input_ids {tuple(input_ids.shape)}; "
+                f"got {_describe(segments)}"
+            )
         if segments.dtype is torch.bool or segments.is_floating_point() or segments.is_complex():
-            raise SpecError("packed segment ids must use an integer dtype")
+            raise SpecError(f"packed segment ids must use an integer dtype; got {_describe(segments)}")
         if block.device != input_ids.device or segments.device != input_ids.device:
             raise SpecError("packed attention tensors must share the input_ids device")
         valid = binary_mask(

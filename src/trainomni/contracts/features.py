@@ -74,7 +74,8 @@ class ModalFeatureSet:
             value = branch.features.embeddings
             if not isinstance(value, torch.Tensor) or value.ndim != 3:
                 raise ValueError(
-                    f"branch {branch.name!r} embeddings must be [batch, tokens, hidden]"
+                    f"branch {branch.name!r} embeddings must be [batch, tokens, hidden]; "
+                    f"got shape={getattr(value, 'shape', None)}, dtype={getattr(value, 'dtype', None)}"
                 )
             current_batch, _, current_hidden = value.shape
             if batch_size is None:
@@ -120,7 +121,9 @@ class ModalFeatureSet:
                     tokens,
                 ):
                     raise ValueError(
-                        f"branch {branch.name!r} positions must match [batch, tokens]"
+                        f"branch {branch.name!r} positions must match [batch, tokens] "
+                        f"= {(batch_size, tokens)}; got shape={getattr(position, 'shape', None)}, "
+                        f"dtype={getattr(position, 'dtype', None)}; check per-pack visual boundaries"
                     )
                 normalized_positions.append(position)
             merged_positions = torch.cat(normalized_positions, dim=1)

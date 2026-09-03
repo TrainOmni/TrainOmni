@@ -23,7 +23,12 @@ def _write_exact(path: Path, payload: Any) -> None:
     ) + "\n"
     if path.exists():
         if not path.is_file() or path.read_text(encoding="utf-8") != content:
-            raise CheckpointError(f"resolved run identity already differs: {path}")
+            raise CheckpointError(
+                f"resolved run identity already differs: {path}. "
+                "For a new experiment choose a new checkpoint.directory output parent; "
+                "keep the old outputs. To resume, use the original task/run configuration "
+                "and --resume. Do not delete or overwrite identity files."
+            )
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")

@@ -137,9 +137,12 @@ pre-redesign code is archive-only and is not a second active implementation.
   steps: **7 routes / 112 steps**. All gradients and required component updates
   were finite/nonzero. See
   `docs/verification/real-vlm-medium-data-20260822.md`.
-- Current-tree real-VLM/CUDA revalidation is pending. Historical runs are not
-  presented as validation of the corrected cache, identity, metric or checkpoint
-  paths.
+- Current-tree real-VLM/CUDA revalidation now covers the replacement
+  Qwen3.5-raw-ViT/random-Qwen-merger/MiniCPM5 connector-alignment task: unpacked
+  train/checkpoint/evaluate/export/reload; dense Parquet and Arrow packing with
+  batch-size two and workers 0/1/2; SDPA; and the explicit padding-free CUTLASS
+  adapter. This is not a revalidation of every historical full-SFT/LoRA/KD/DPO
+  route. See `docs/verification/feedback-v3-20260904.md`.
 
 ## Explicitly outside v0.1.2
 

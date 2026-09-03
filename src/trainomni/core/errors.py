@@ -25,5 +25,9 @@ class OptimizationError(TrainOmniError):
     """Raised when gradients or optimizer state are invalid."""
 
 
+class DataLoadingError(TrainOmniError):
+    """Raised when a data worker or batch preparation fails; no fallback."""
+
+
 class CheckpointError(TrainOmniError):
     """Raised when checkpoint identity or state validation fails."""

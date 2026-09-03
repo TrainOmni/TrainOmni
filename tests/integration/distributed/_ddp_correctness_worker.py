@@ -15,7 +15,7 @@ from trainomni.contracts.batch import OmniBatch
 from trainomni.contracts.forward import ForwardPlan, ForwardRequest, OutputRequirements
 from trainomni.contracts.loss import LossBundle, LossTerm, ObjectiveMetric
 from trainomni.core.context import ObjectiveContext
-from trainomni.core.errors import CheckpointError
+from trainomni.core.errors import CheckpointError, DataLoadingError
 from trainomni.modules.objectives.protocol import ObjectiveRequirements
 from trainomni.modules.parameters.full.config import FullParameterConfig
 from trainomni.modules.parameters.full.module import FullParameterPolicy
@@ -28,8 +28,10 @@ class ScalarModel(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.tensor(0.5))
+        self.forward_calls = 0
 
     def forward(self, *, values):
+        self.forward_calls += 1
         return SimpleNamespace(logits=self.weight * values)
 
 
@@ -306,6 +308,29 @@ def _rank_main(rank: int, world_size: int, output_text: str, port: int) -> None:
         materialize_errors = [None] * process.world_size
         torch.distributed.all_gather_object(materialize_errors, materialize_error)
 
+        # A rank-local loader failure must be communicated before any DDP forward.
+        original_stream = engine.stream
+        def failing_batch(batch_size):
+            if rank == 1:
+                raise RuntimeError("injected rank-local loader failure")
+            values, labels = RankStream.DATA[0][0]
+            return OmniBatch(("healthy-rank",), {"values": values}, labels)
+        engine.stream = SimpleNamespace(next_batch=failing_batch)
+        before_weight = model.weight.detach().clone()
+        calls_before_failure = model.forward_calls
+        try:
+            engine._optimizer_step()
+        except DataLoadingError as exc:
+            loader_error = str(exc)
+        else:
+            raise AssertionError("rank-local loader failure did not propagate")
+        finally:
+            engine.stream = original_stream
+        assert engine.global_step == 1 and torch.equal(model.weight, before_weight)
+        assert model.forward_calls == calls_before_failure
+        loader_errors = [None] * process.world_size
+        torch.distributed.all_gather_object(loader_errors, loader_error)
+
         if process.is_primary:
             expected_weight, expected_loss = _expected()
             output.write_text(
@@ -320,6 +345,7 @@ def _rank_main(rank: int, world_size: int, output_text: str, port: int) -> None:
                         "local_capture_step_exists": local_capture_step_exists,
                         "checkpoint_errors": checkpoint_errors,
                         "materialize_errors": materialize_errors,
+                        "loader_errors": loader_errors,
                     },
                     sort_keys=True,
                 ),

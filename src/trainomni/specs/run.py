@@ -518,6 +518,8 @@ class DataLoaderSpec:
     pin_memory: bool = False
     in_order: bool = True
     snapshot_every_n_steps: int = 1
+    multiprocessing_context: str = "spawn"
+    timeout_seconds: float = 0.0
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> DataLoaderSpec:
@@ -528,6 +530,8 @@ class DataLoaderSpec:
             "pin_memory",
             "in_order",
             "snapshot_every_n_steps",
+            "multiprocessing_context",
+            "timeout_seconds",
         }
         unknown = sorted(set(value) - allowed)
         if unknown:
@@ -570,6 +574,17 @@ class DataLoaderSpec:
             )
         if snapshot_every_n_steps <= 0:
             raise SpecError("data_loader.snapshot_every_n_steps must be positive")
+        context = value.get("multiprocessing_context", "spawn")
+        if context not in {"spawn", "forkserver", "fork"}:
+            raise SpecError("data_loader.multiprocessing_context must be spawn, forkserver or fork")
+        timeout = value.get("timeout_seconds", 0.0)
+        if (
+            isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout) or timeout < 0
+        ):
+            raise SpecError("data_loader.timeout_seconds must be finite and non-negative")
+        if timeout and num_workers == 0:
+            raise SpecError("data_loader.timeout_seconds requires num_workers > 0")
         return cls(
             num_workers=num_workers,
             prefetch_factor=prefetch_factor,
@@ -577,6 +592,8 @@ class DataLoaderSpec:
             pin_memory=pin_memory,
             in_order=in_order,
             snapshot_every_n_steps=snapshot_every_n_steps,
+            multiprocessing_context=context,
+            timeout_seconds=float(timeout),
         )
 
 

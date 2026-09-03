@@ -1,5 +1,11 @@
 # Modal branch and fusion contract
 
+For flattened variable-size image patches, grouping is explicit: put grid rows
+in `grid` and per-batch/per-pack image counts in `metadata`. The connector
+reconstructs `[B,M_max,H]` and a validity mask before token replacement. With
+mixed image counts, positions use `-1` for padded modal slots. Neither Framework
+nor the connector ABI assumes one image or one pack per forward.
+
 A composite model does not hard-code `vision_encoder`, `audio_encoder`, or a
 particular VLM class. Its own config declares ordered modal branches:
 

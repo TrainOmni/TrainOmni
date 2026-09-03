@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import torch
 from torch import nn
 
 from trainomni.core.capability import CapabilitySet
@@ -24,6 +25,17 @@ class TransformersCausalLanguage(nn.Module):
 
     def forward_embeddings(self, embeddings, *, attention_mask=None, **kwargs):
         kwargs.pop("input_ids", None)
+        # Semantic policies construct additive masks after device placement.
+        # Keep boolean masks boolean; match additive bias to runtime Q/K dtype.
+        if attention_mask is not None and attention_mask.is_floating_point():
+            bounds = torch.finfo(embeddings.dtype)
+            # FP32 finfo.min overflows BF16/FP16. Preserve intentional infinities,
+            # but keep finite mask sentinels finite (all-padding query rows).
+            attention_mask = torch.where(
+                torch.isfinite(attention_mask),
+                attention_mask.clamp(min=bounds.min, max=bounds.max),
+                attention_mask,
+            ).to(dtype=embeddings.dtype)
         return self.model(
             inputs_embeds=embeddings,
             attention_mask=attention_mask,

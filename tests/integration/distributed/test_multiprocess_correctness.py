@@ -64,3 +64,6 @@ def test_two_rank_global_loss_and_primary_failures_are_coordinated(
     assert "refusing to overwrite checkpoint" in payload["checkpoint_errors"][0]
     assert len(set(payload["materialize_errors"])) == 1
     assert "identity receipt denied" in payload["materialize_errors"][0]
+    assert len(set(payload["loader_errors"])) == 1
+    assert "failed on rank 1" in payload["loader_errors"][0]
+    assert "injected rank-local loader failure" in payload["loader_errors"][0]

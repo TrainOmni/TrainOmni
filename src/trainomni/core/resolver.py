@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .capability import CapabilitySet
@@ -27,6 +27,11 @@ class ModuleResolver:
     def resolve(self, reference: ModuleRef, *, kind: ModuleKind) -> ResolvedModule:
         descriptor = self.registry.descriptor(reference, expected_kind=kind)
         config = parse_config(descriptor.config_type, reference.config)
+        if descriptor.configured_provides is not None:
+            descriptor = replace(
+                descriptor,
+                provides=descriptor.provides.union(descriptor.configured_provides(config)),
+            )
         return ResolvedModule(reference, descriptor, config)
 
     @staticmethod

@@ -165,7 +165,11 @@ executes those checkouts.
 
 ## Consumer task tree
 
-Concrete tasks are not stored under Framework:
+Concrete tasks are not stored under Framework. Each test group has an independent
+task directory, strongly named `YYYYMMDD_<specific_task>`. Existing tasks and their
+results are retained when starting a new group or changing model architecture.
+The tree below describes one task, not a singleton shared by all experiments.
+See [task organization](../usage/task-organization.md) for a multi-task example.
 
 ```text
 <task-root>/
@@ -207,7 +211,11 @@ mutates sys.path. This is provenance isolation, not a security sandbox.
 ```
 
 Framework source, task semantics, run controls, and generated state therefore have
-four different roots and cannot overwrite one another.
+four distinct responsibilities and non-overlapping write targets. Run definitions
+and outputs may be separate subdirectories within their owning task directory
+(for example `runs/` and `outputs/<run-id>/`), or live in external roots. One task
+may have several runs; independent runs must not reuse an output root. A changed
+task must not overwrite the configuration or evidence of an older experiment.
 
 Platform startup is a fifth, thin boundary: it selects an already-created Python
 environment and forwards CLI arguments. It cannot interpret or mutate any of the

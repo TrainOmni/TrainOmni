@@ -4,6 +4,12 @@ TrainOmni is a module-oriented multimodal training framework. Framework source,
 TaskSpec, RunSpec and generated output are separate roots. A model or training
 task is composed from typed modules; core code does not branch on model names.
 
+Create an independent task for each experiment/test group; preserve old tasks
+and their results instead of rewriting one shared task. Strongly prefer
+`YYYYMMDD_<specific_task>` for task directories and names. Multiple runs may
+belong to one task, but every independent execution has its own output directory.
+See [task organization, naming and history preservation](docs/usage/task-organization.md).
+
 Git release **v3** includes the corrected data path, StatefulDataLoader runtime,
 and opt-in padding-free/CUTLASS varlen integration. Python package version is
 `0.1.2`; the Git tag does not mean package version `3.0`. See
@@ -87,7 +93,8 @@ Important documents:
   docs/verification/real-vlm-medium-data-20260822.md
 - corrected provenance/loss/data/distributed/cache closure:
   docs/verification/core-correctness-20260901.md
-- one task / one run / one command: docs/usage/quickstart.md
+- task naming, isolation and historical results: docs/usage/task-organization.md
+- task/run configuration and commands: docs/usage/quickstart.md
 
 Basic command boundary:
 

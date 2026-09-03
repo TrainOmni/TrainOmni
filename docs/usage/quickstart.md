@@ -1,14 +1,26 @@
-# One task, one run, one command
+# Tasks, runs and commands
 
-Framework code is installed or placed on `PYTHONPATH`; the task directory and run
-directory remain outside Framework. The following is the minimal monolithic VLM
-shape. Replace paths and SHA-256 values with immutable local assets.
+Framework code is installed or placed on `PYTHONPATH`; experiment tasks remain
+outside Framework. Create one independent task for each test group and preserve
+previous tasks and results. A task can have multiple run configurations with
+separate outputs. Strongly prefer `YYYYMMDD_<specific_task>` for the task directory
+and `TaskSpec.name`. See [task organization and history preservation](task-organization.md)
+for the directory layout, Task/Run boundary and relative-path rules.
+
+For a complete real-model task rather than the schematic below, use the
+[Qwen3.5 raw-ViT/random-merger/MiniCPM5 reproduction guide](real-vlm-feedback.md).
+The runnable templates live outside Framework and are copied from locally
+verified tasks; private model/data paths are supplied in `paths.local.json`.
+
+The following is a minimal monolithic VLM configuration shape, not a fully
+verified model-specific template. Replace paths and SHA-256 values with immutable
+local assets and validate the concrete processor/model contract.
 
 `task.yaml`:
 
 ```yaml
 schema_version: 1
-name: my-vlm-sft
+name: 20260904_my_vlm_sft
 data:
   source:
     module: data_source:trainomni/jsonl@1
@@ -154,7 +166,7 @@ semantics:
 
 ```powershell
 $env:TRAINOMNI_PYTHON = 'D:\path\to\cuda-env\Scripts\python.exe'
-D:\path\to\Framework\launch\windows\trainomni.ps1 train --task D:\tasks\my-vlm\task.yaml --run D:\runs\baseline\run.yaml
+D:\path\to\Framework\launch\windows\trainomni.ps1 train --task D:\tasks\20260904_my_vlm_sft\task.yaml --run D:\runs\baseline\run.yaml
 ```
 
 Full-state resume requires the same semantic TaskSpec and RunSpec. The physical
@@ -181,8 +193,10 @@ trainomni evaluate --task task.yaml --run run.yaml --checkpoint outputs/checkpoi
 trainomni export --task task.yaml --run run.yaml --checkpoint outputs/checkpoints/step-00001000
 ```
 
-For a composite ViT + connector + LLM, only the `model` section changes to the
-composite implementation plus named encoder/connector/fusion/language modules.
+For a composite ViT + connector + LLM, use the composite implementation plus
+named encoder/connector/fusion/language modules. ModelIO, visual-field routing,
+packing and collation must also satisfy that concrete model's input contract;
+changing only the `model` section is not sufficient in general.
 Loss, attention policy, data source, ModelIO, parameter policy, evaluator and
 exporter are independent extension points described in `../modules/extensions.md`.
 

@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from trainomni.contracts._mapping import FrozenDict
+from trainomni.modules.data._fields import validate_field_paths
 from trainomni.modules.data._validation import (
     normalize_string_sequence,
     require_int,
@@ -77,6 +78,7 @@ class SequencePackerConfig:
                 "sequence packer fields have multiple policies: "
                 + ", ".join(duplicates)
             )
+        validate_field_paths((*names, *configured))
         if not isinstance(self.field_pad_values, Mapping):
             raise TypeError("field_pad_values must be a mapping")
         pad_values = {}

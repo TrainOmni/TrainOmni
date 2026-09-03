@@ -28,9 +28,21 @@ packer:
     max_length: 4096
     pad_token_id: 0
     sequence_fields: [token_type_ids]
-    concat_fields: [pixel_values, image_grid_thw]
+    concat_fields: [vision.hidden_states, vision.grid_thw, vision.image_counts]
     offset_fields: [modal_positions]
 ```
+
+Nested fields use explicit dotted leaf paths. The packer flattens paths for
+policy lookup and reconstructs the same nested mapping afterward. It does not
+guess an axis for an entire vision subtree: flattened patches, grid rows,
+per-example image counts and token positions have different meanings.
+Overlapping paths, unknown fields and missing declared fields fail closed.
+An explicitly listed `list_fields` subtree is preserved as a list, not tensor
+concatenated; its consumer must implement that contract.
+
+Per uncollated pack, `packed_attention_mask` is `[1,S,S]`: **1 is the head axis**,
+not a batch axis. Collation stacks packs to `[B,1,S,S]`. Do not unsqueeze again.
+The attention policy reports actual shape/dtype/device on invalid inputs.
 
 Packing additionally requires an attention policy providing
 `model.attention.packed`. The builtin packed policy re-derives the mask from token
@@ -38,6 +50,29 @@ validity and segment IDs before model forward and rejects corruption. It can emi
 boolean or FP32 additive 4D masks. It also requires a sequence-length-preserving
 fusion such as token replacement; prefix fusion cannot silently use the same mask
 because it inserts modal tokens.
+
+For `B > 1`, concatenated pixels alone are insufficient. The task encoder must
+retain image grid and per-pack grouping in `ModalFeatures.grid/metadata`; the
+connector must return padded `[B,M_max,H]`, a matching mask, and positions whose
+padding is `-1`. One working explicit layout is
+`vision.image_counts[B,max_examples_per_pack]`, with **zero** count padding:
+
+```yaml
+field_modes:
+  model_inputs.vision.hidden_states: concat
+  model_inputs.vision.grid_thw: concat
+  model_inputs.vision.image_counts: pad
+  model_inputs.modal_positions: pad
+field_pad_values:
+  model_inputs.vision.image_counts: 0
+```
+
+No new connector ABI is required: `ModalFeatures.metadata` already carries the
+boundaries. There is no blanket batch-size-one restriction on dense packing.
+The separate padding-free collator still requires one **pack**, which can
+contain multiple samples. The Transformers language adapter converts additive
+masks to the embedding dtype while keeping finite sentinels finite; boolean
+masks are unchanged.
 
 Models that use FlashAttention variable-length metadata, document masks, or a
 different packed-attention representation register an attention policy and,

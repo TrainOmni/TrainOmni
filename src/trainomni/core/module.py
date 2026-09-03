@@ -6,8 +6,9 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Any, TypeVar
+
+from trainomni.contracts._mapping import FrozenDict
 
 from .capability import CapabilitySet
 from .errors import SpecError
@@ -76,7 +77,7 @@ def freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
 
     def freeze(item: Any) -> Any:
         if isinstance(item, Mapping):
-            return MappingProxyType({str(key): freeze(inner) for key, inner in item.items()})
+            return FrozenDict({str(key): freeze(inner) for key, inner in item.items()})
         if isinstance(item, list | tuple):
             return tuple(freeze(inner) for inner in item)
         return item
@@ -87,7 +88,7 @@ def freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
 @dataclass(frozen=True, slots=True)
 class ModuleRef:
     module_id: ModuleId
-    config: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    config: Mapping[str, Any] = field(default_factory=FrozenDict)
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any], *, field_name: str) -> ModuleRef:
@@ -132,6 +133,7 @@ class ModuleDescriptor:
     provides: CapabilitySet = field(default_factory=CapabilitySet)
     requires: CapabilitySet = field(default_factory=CapabilitySet)
     api_version: int = MODULE_API_VERSION
+    configured_provides: Callable[[Any], CapabilitySet] | None = None
 
     def __post_init__(self) -> None:
         if self.api_version != MODULE_API_VERSION:

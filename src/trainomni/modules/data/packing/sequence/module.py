@@ -12,6 +12,7 @@ from trainomni.contracts.batch import SupervisedExample
 from trainomni.core.capability import CapabilitySet
 from trainomni.core.errors import CheckpointError, SpecError
 from trainomni.core.module import ModuleDescriptor, ModuleId
+from trainomni.modules.data._fields import flatten_fields, unflatten_fields
 from trainomni.modules.data._tensors import binary_mask
 
 from .config import SequencePackerConfig
@@ -98,8 +99,12 @@ class SequencePacker:
         samples: Sequence[SupervisedExample],
         lengths: Sequence[int],
     ) -> dict[str, object]:
-        keys = set(samples[0].model_inputs)
-        if any(set(sample.model_inputs) != keys for sample in samples[1:]):
+        fields = [
+            flatten_fields(sample.model_inputs, leaves=self.config.list_fields)
+            for sample in samples
+        ]
+        keys = set(fields[0])
+        if any(set(item) != keys for item in fields[1:]):
             raise SpecError("packed samples must have identical model-input keys")
         reserved = {
             self.config.input_ids_field,
@@ -120,10 +125,13 @@ class SequencePacker:
             raise SpecError(
                 "sequence packer has no field policy for: " + ", ".join(unknown)
             )
+        missing = sorted((known - reserved) - keys)
+        if missing:
+            raise SpecError("packed samples are missing configured fields: " + ", ".join(missing))
 
         max_length = self._target_length(lengths)
         input_values = [
-            sample.model_inputs[self.config.input_ids_field] for sample in samples
+            item[self.config.input_ids_field] for item in fields
         ]
         self._validate_tensor_family(input_values, field=self.config.input_ids_field)
         packed_input_ids = self._pad_first_axis(
@@ -155,7 +163,7 @@ class SequencePacker:
         }
 
         for field in self.config.sequence_fields:
-            values = [sample.model_inputs[field] for sample in samples]
+            values = [item[field] for item in fields]
             if not all(isinstance(value, torch.Tensor) for value in values):
                 raise SpecError(f"packed sequence field {field!r} must contain tensors")
             self._validate_tensor_family(values, field=field)
@@ -170,7 +178,7 @@ class SequencePacker:
                 pad_value=self.config.field_pad_values.get(field, 0),
             )
         for field in self.config.concat_fields:
-            values = [sample.model_inputs[field] for sample in samples]
+            values = [item[field] for item in fields]
             if not all(
                 isinstance(value, torch.Tensor) and value.ndim > 0 for value in values
             ):
@@ -178,7 +186,7 @@ class SequencePacker:
             self._validate_tensor_family(values, field=field)
             output[field] = torch.cat(tuple(values), dim=0)
         for field in self.config.offset_fields:
-            values = [sample.model_inputs[field] for sample in samples]
+            values = [item[field] for item in fields]
             if not all(
                 isinstance(value, torch.Tensor)
                 and value.ndim == 1
@@ -201,8 +209,8 @@ class SequencePacker:
                 offset += length
             output[field] = torch.cat(tuple(adjusted), dim=0)
         for field in self.config.list_fields:
-            output[field] = tuple(sample.model_inputs[field] for sample in samples)
-        return output
+            output[field] = tuple(item[field] for item in fields)
+        return unflatten_fields(output)
 
     def _pack_supervision(
         self,

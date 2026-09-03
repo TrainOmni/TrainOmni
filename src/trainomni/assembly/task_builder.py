@@ -96,11 +96,14 @@ def build_task(
         else None
     )
     evaluation_stream = None
+    if stream is not None:
+        stream.bind_local_sources(task.local_modules, task_root)
     evaluators = ()
     if task.evaluation is not None and operation in {"all", "evaluate"}:
         evaluation_stream = build_data_stream(
             task.evaluation.data, resolver, context=base_context
         )
+        evaluation_stream.bind_local_sources(task.local_modules, task_root)
         evaluators = tuple(
             resolver.resolve(reference, kind=ModuleKind.EVALUATOR).build(base_context)
             for reference in task.evaluation.evaluators

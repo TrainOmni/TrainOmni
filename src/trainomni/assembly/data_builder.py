@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import pickle
 from dataclasses import replace
+from pathlib import Path
 from types import MappingProxyType
 
 from torch.utils.data import IterableDataset, get_worker_info
@@ -15,6 +17,18 @@ from trainomni.core.resolver import ModuleResolver
 from trainomni.modules.data.adapters.binding import AdaptedSource
 from trainomni.runtime.execution.data import RankShardedSource
 from trainomni.specs.task import DataPipelineSpec
+
+
+def _restore_worker_pipeline(local_sources, task_root, payload):
+    # Spawn must import pinned task-local classes before unpickling their instances.
+    # This is the same explicitly trusted code as the parent's local-module opt-in.
+    from trainomni.catalog.local import load_local_descriptor
+
+    for source in local_sources:
+        load_local_descriptor(source, task_root=Path(task_root), allow_local_code=True)
+    result = DataPipelineStream.__new__(DataPipelineStream)
+    result.__dict__.update(pickle.loads(payload))
+    return result
 
 
 def _optional_state(module):
@@ -59,6 +73,18 @@ class DataPipelineStream(IterableDataset):
         self._loader_rank = 0
         self._loader_world_size = 1
         self._worker_topology: tuple[int, int] | None = None
+        self._local_sources = ()
+        self._task_root = None
+
+    def bind_local_sources(self, sources, task_root) -> None:
+        self._local_sources = tuple(sources)
+        self._task_root = None if task_root is None else str(task_root)
+
+    def __reduce__(self):
+        return (
+            _restore_worker_pipeline,
+            (self._local_sources, self._task_root, pickle.dumps(self.__dict__)),
+        )
 
     def configure_loader(
         self,
