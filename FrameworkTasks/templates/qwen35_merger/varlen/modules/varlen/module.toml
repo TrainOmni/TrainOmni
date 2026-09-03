@@ -1,0 +1,4 @@
+[module]
+id = "model:example/qwen35_merger_varlen@1"
+entrypoint = "module:descriptor"
+api_version = 1

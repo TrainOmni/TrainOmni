@@ -1,0 +1,5 @@
+{
+  "vision_model": "/absolute/path/to/Qwen3.5-0.8B",
+  "language_model": "/absolute/path/to/MiniCPM5-1B",
+  "source_parquet": "/absolute/path/to/intergps/train.parquet"
+}

@@ -1,0 +1,4 @@
+[module]
+id = "model_io:example/qwen35_minicpm5@1"
+entrypoint = "module:descriptor"
+api_version = 1

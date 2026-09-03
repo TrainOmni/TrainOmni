@@ -1,0 +1,4 @@
+[module]
+id = "encoder:example/qwen35_raw_vit@1"
+entrypoint = "module:descriptor"
+api_version = 1

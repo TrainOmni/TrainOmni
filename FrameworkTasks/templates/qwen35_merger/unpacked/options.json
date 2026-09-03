@@ -1,0 +1,7 @@
+{
+  "format": "parquet",
+  "packing": false,
+  "max_length": 512,
+  "max_samples_per_pack": 2,
+  "multi_image_fixture": true
+}
